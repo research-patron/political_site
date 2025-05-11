@@ -1,0 +1,177 @@
+Option Explicit
+
+Private Sub Worksheet_Change(ByVal target As Range)
+    ' 提出状況管理シートの提出日列が変更された場合に処理
+    Dim isSubmissionDateColumn As Boolean
+
+    ' 変更されたセルが単一セルで、ヘッダー行より下かを確認
+    If target.CountLarge = 1 And target.Row > MUNILIST_HEADER_ROW Then
+        ' タスクの提出日列かどうかを確認
+        Dim headerRowForTaskName As Long
+        headerRowForTaskName = MUNILIST_HEADER_ROW - 1
+
+        ' 変更された列のヘッダーを確認
+        Dim columnHeader As String
+        columnHeader = Me.Cells(MUNILIST_HEADER_ROW, target.Column).Value
+
+        ' ヘッダーが「提出日」の場合にフラグをセット
+        If columnHeader = "提出日" Then
+            isSubmissionDateColumn = True
+        End If
+
+        ' 提出日列の変更であれば処理を行う
+        If isSubmissionDateColumn Then
+            If IsDate(target.Value) Then
+                ' 単一タスク表示モードの場合、タスク名からsubmissionColsを取得して更新処理を呼び出す
+                If gSubmissionViewMode = VIEW_MODE_SINGLE_TASK Then
+                    ' タスク名を取得
+                    Dim taskName As String
+                    taskName = Me.Cells(headerRowForTaskName, target.Column).Value
+
+                    ' タスク名のセルの文字色を白に設定
+                    Me.Cells(headerRowForTaskName, target.Column).Font.Color = RGB(255, 255, 255)
+
+                    If taskName <> "" Then
+                        ' 提出状況を○に変更
+                        Me.Cells(target.Row, target.Column + 1).Value = "○"
+                        Me.Cells(target.Row, target.Column + 1).HorizontalAlignment = xlCenter
+
+                        ' 現在のタスクの提出率を再計算
+                        Dim submissionCols As Collection
+                        Set submissionCols = FindTaskSubmissionColumns(taskName, Me)
+                        If Not submissionCols Is Nothing And submissionCols.Count = 2 Then
+                            Call M_Submission.RecalculateSubmissionSummary(Me, submissionCols, taskName)
+                        End If
+                    End If
+                ' 全タスク表示モードの場合
+                Else
+                    ' タスク名を取得して更新
+                    Dim allModeTaskName As String
+                    allModeTaskName = Me.Cells(headerRowForTaskName, target.Column).Value
+
+                    ' タスク名のセルの文字色を白に設定
+                    Me.Cells(headerRowForTaskName, target.Column).Font.Color = RGB(255, 255, 255)
+
+                    ' 隣のセルを取得して提出状況を○に変更
+                    Me.Cells(target.Row, target.Column + 1).Value = "○"
+                    Me.Cells(target.Row, target.Column + 1).HorizontalAlignment = xlCenter
+
+                    ' 名前定義から元の列情報を取得するか、通常の検索を行う
+                    If allModeTaskName <> "" Then
+                        Dim allModeCols As Collection
+                        Dim foundOriginalCols As Boolean
+                        foundOriginalCols = False
+
+                        ' 名前定義を使って元の列を検索
+                        On Error Resume Next
+                        Dim taskNameForLookup As String
+                        Dim colsRefersTo As String
+                        taskNameForLookup = Replace(allModeTaskName, " ", "_")
+
+                        Dim nm As Name
+                        For Each nm In Me.Parent.Names
+                            If nm.Name Like "*Task_" & taskNameForLookup & "_Cols" Then
+                                colsRefersTo = nm.RefersTo
+                                colsRefersTo = Replace(colsRefersTo, "=", "")
+
+                                Dim parts As Variant
+                                parts = Split(colsRefersTo, ",")
+
+                                If UBound(parts) >= 1 Then
+                                    ' オリジナルの列を使用
+                                    Set allModeCols = New Collection
+                                    allModeCols.Add CLng(parts(0))
+                                    allModeCols.Add CLng(parts(1))
+                                    foundOriginalCols = True
+                                End If
+
+                                Exit For
+                            End If
+                        Next nm
+                        On Error GoTo 0
+
+                        ' 名前定義が見つからなければ通常の検索
+                        If Not foundOriginalCols Then
+                            Set allModeCols = FindTaskSubmissionColumns(allModeTaskName, Me)
+                        End If
+
+                        ' 元の列と違う場合は、元の列も更新
+                        If Not allModeCols Is Nothing And allModeCols.Count = 2 Then
+                            If allModeCols(1) <> target.Column Then
+                                Me.Cells(target.Row, allModeCols(1)).Value = target.Value
+                                Me.Cells(target.Row, allModeCols(1)).NumberFormat = "m/d"
+                                Me.Cells(target.Row, allModeCols(2)).Value = "○"
+                                Me.Cells(target.Row, allModeCols(2)).HorizontalAlignment = xlCenter
+                            End If
+
+                            ' このタスクの提出率を再計算
+                            Call M_Submission.RecalculateSubmissionSummary(Me, allModeCols, allModeTaskName)
+                        End If
+                    End If
+                End If
+            Else
+                ' 日付が入力されていないか無効な日付の場合は、×に設定
+                Me.Cells(target.Row, target.Column + 1).Value = "×"
+                Me.Cells(target.Row, target.Column + 1).HorizontalAlignment = xlCenter
+
+                ' 提出状況の更新（単一表示モードでも全タスク表示モードでも）
+                Dim taskNameForEmpty As String
+                taskNameForEmpty = Me.Cells(headerRowForTaskName, target.Column).Value
+
+                ' タスク名のセルの文字色を白に設定
+                Me.Cells(headerRowForTaskName, target.Column).Font.Color = RGB(255, 255, 255)
+
+                If taskNameForEmpty <> "" Then
+                    Dim submissionColsForEmpty As Collection
+                    Dim foundEmptyCols As Boolean
+                    foundEmptyCols = False
+
+                    ' 名前定義を使って元の列を検索
+                    On Error Resume Next
+                    Dim emptyTaskNameForLookup As String
+                    Dim emptyColsRefersTo As String
+                    emptyTaskNameForLookup = Replace(taskNameForEmpty, " ", "_")
+
+                    Dim emptyNm As Name
+                    For Each emptyNm In Me.Parent.Names
+                        If emptyNm.Name Like "*Task_" & emptyTaskNameForLookup & "_Cols" Then
+                            emptyColsRefersTo = emptyNm.RefersTo
+                            emptyColsRefersTo = Replace(emptyColsRefersTo, "=", "")
+
+                            Dim emptyParts As Variant
+                            emptyParts = Split(emptyColsRefersTo, ",")
+
+                            If UBound(emptyParts) >= 1 Then
+                                ' オリジナルの列を使用
+                                Set submissionColsForEmpty = New Collection
+                                submissionColsForEmpty.Add CLng(emptyParts(0))
+                                submissionColsForEmpty.Add CLng(emptyParts(1))
+                                foundEmptyCols = True
+                            End If
+
+                            Exit For
+                        End If
+                    Next emptyNm
+                    On Error GoTo 0
+
+                    ' 名前定義が見つからなければ通常の検索
+                    If Not foundEmptyCols Then
+                        Set submissionColsForEmpty = FindTaskSubmissionColumns(taskNameForEmpty, Me)
+                    End If
+
+                    If Not submissionColsForEmpty Is Nothing And submissionColsForEmpty.Count = 2 Then
+                        ' 元の列と違う場合は、元の列も更新
+                        If submissionColsForEmpty(1) <> target.Column Then
+                            Me.Cells(target.Row, submissionColsForEmpty(1)).Value = ""
+                            Me.Cells(target.Row, submissionColsForEmpty(2)).Value = "×"
+                            Me.Cells(target.Row, submissionColsForEmpty(2)).HorizontalAlignment = xlCenter
+                        End If
+
+                        ' このタスクの提出率を再計算
+                        Call M_Submission.RecalculateSubmissionSummary(Me, submissionColsForEmpty, taskNameForEmpty)
+                    End If
+                End If
+            End If
+        End If
+    End If
+End Sub
