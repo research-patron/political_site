@@ -1,0 +1,190 @@
+Option Explicit
+
+Public Function GetSheet(sheetName As String) As Worksheet
+    On Error Resume Next
+    Set GetSheet = ThisWorkbook.Sheets(sheetName)
+    If Err.Number <> 0 Then
+        Set GetSheet = Nothing
+        Debug.Print "Error in GetSheet: Sheet '" & sheetName & "' not found."
+    End If
+    On Error GoTo 0
+End Function
+
+
+Public Sub ClearSheetButtons(sht As Worksheet)
+    Dim shp As Shape
+    On Error Resume Next
+    For Each shp In sht.Shapes
+        If shp.Type = msoFormControl And shp.FormControlType = xlButtonControl Then
+            shp.Delete
+        End If
+    Next shp
+    On Error GoTo 0
+End Sub
+
+Public Function FindTaskRow(taskName As String, wsCalendar As Worksheet) As Long
+    Dim foundCell As Range
+
+    If wsCalendar Is Nothing Then
+        FindTaskRow = 0
+        Exit Function
+    End If
+    
+    On Error Resume Next
+    Set foundCell = wsCalendar.Columns("C").Find(What:=taskName, LookIn:=xlValues, lookat:=xlWhole, MatchCase:=False)
+    On Error GoTo 0
+
+    If Not foundCell Is Nothing Then
+        FindTaskRow = foundCell.Row
+    Else
+        FindTaskRow = 0
+    End If
+End Function
+
+Public Function FindTaskSubmissionColumns(taskName As String, wsSubmission As Worksheet) As Collection
+    Dim lastCol As Long
+    Dim c As Long
+    Dim cols As New Collection
+    Dim headerRowForTaskName As Long
+
+    Set FindTaskSubmissionColumns = Nothing
+    If wsSubmission Is Nothing Or Trim(taskName) = "" Then Exit Function
+
+    headerRowForTaskName = MUNILIST_HEADER_ROW - 2
+
+    lastCol = wsSubmission.Cells(headerRowForTaskName, wsSubmission.Columns.Count).End(xlToLeft).Column
+    
+    If lastCol < Columns("F").Column Then
+        Exit Function
+    End If
+    
+    For c = Columns("F").Column To lastCol Step 2
+        If Trim(CStr(wsSubmission.Cells(headerRowForTaskName, c).Value)) = Trim(CStr(taskName)) Then
+            cols.Add c
+            cols.Add c + 1
+            Set FindTaskSubmissionColumns = cols
+            Exit Function
+        End If
+    Next c
+End Function
+
+Public Sub SetDefaultFont(sht As Worksheet)
+    On Error Resume Next
+    sht.Cells.Font.Name = DEFAULT_FONT_NAME
+    If Err.Number <> 0 Then
+        Debug.Print "Warning: Font '" & DEFAULT_FONT_NAME & "' not found on this system. Using default font."
+        Err.Clear
+    End If
+    On Error GoTo 0
+End Sub
+
+Public Function CreateButton(sht As Worksheet, targetCell As Range, _
+                             buttonText As String, macroName As String, _
+                             Optional buttonWidth As Double = -1, Optional buttonHeight As Double = -1, _
+                             Optional fontSize As Single = 10, Optional ByVal newButtonName As String = "") As Button
+    Dim btn As Button
+    Dim effWidth As Double, effHeight As Double
+    Dim actualTargetCell As Range
+
+    If sht Is Nothing Or targetCell Is Nothing Then
+        Debug.Print "CreateButton: Invalid arguments (sht or targetCell is Nothing)."
+        Set CreateButton = Nothing
+        Exit Function
+    End If
+
+    Set actualTargetCell = targetCell.Cells(1, 1)
+
+    If buttonWidth = -1 Then effWidth = actualTargetCell.Width Else effWidth = buttonWidth
+    If buttonHeight = -1 Then effHeight = actualTargetCell.Height Else effHeight = buttonHeight
+    
+    If effWidth > actualTargetCell.Width Then effWidth = actualTargetCell.Width
+    If effWidth < 10 Then effWidth = 10
+    If effHeight > actualTargetCell.Height Then effHeight = actualTargetCell.Height
+    If effHeight < 5 Then effHeight = 5
+
+    On Error Resume Next
+    Set btn = sht.Buttons.Add(actualTargetCell.Left, actualTargetCell.Top, effWidth, effHeight)
+    If btn Is Nothing Then
+        Debug.Print "CreateButton: ボタンの作成に失敗しました。Sheet: " & sht.Name & ", Cell: " & actualTargetCell.Address & ", Error: " & Err.Description
+        Set CreateButton = Nothing
+        Exit Function
+    End If
+    On Error GoTo 0
+
+    With btn
+        .Caption = buttonText
+        .OnAction = "'" & ThisWorkbook.Name & "'!" & macroName
+        .Font.Name = DEFAULT_FONT_NAME
+        .Font.Size = fontSize
+        .Placement = xlMoveAndSize
+        
+        If newButtonName <> "" Then
+            On Error Resume Next
+            .Name = newButtonName
+            If Err.Number <> 0 Then
+                 .Name = newButtonName & "_" & Format(Timer, "00000.000")
+                 Debug.Print "Warning: Button name '" & newButtonName & "' was already in use. Renamed to '" & .Name & "'"
+                 Err.Clear
+            End If
+            On Error GoTo 0
+        End If
+    End With
+    Set CreateButton = btn
+End Function
+
+Public Function GetLastDataRow(ws As Worksheet, col As Variant) As Long
+    If ws Is Nothing Then
+        GetLastDataRow = 0
+        Exit Function
+    End If
+    On Error Resume Next
+    GetLastDataRow = ws.Cells(Rows.Count, col).End(xlUp).Row
+    If Err.Number <> 0 Or GetLastDataRow = 0 Then
+        Err.Clear
+        GetLastDataRow = 0
+        If ws.Cells(Rows.Count, col).End(xlUp).Row = 1 And ws.Cells(1, col).Value = "" Then
+            GetLastDataRow = 0
+        Else
+            GetLastDataRow = ws.Cells(Rows.Count, col).End(xlUp).Row
+        End If
+    End If
+    On Error GoTo 0
+End Function
+
+Public Sub ShowMessage(msg As String, Optional title As String = "情報")
+    MsgBox msg, vbInformation, title
+End Sub
+
+Public Sub ShowError(msg As String, Optional title As String = "エラー")
+    MsgBox msg, vbCritical, title
+End Sub
+
+Public Function ColumnNumberToLetter(columnNumber As Long) As String
+   Dim columnName As String
+   Dim dividend As Long
+   Dim modulo As Long
+
+   If columnNumber <= 0 Then
+       ColumnNumberToLetter = "Err"
+       Exit Function
+   End If
+
+   dividend = columnNumber
+   columnName = vbNullString
+
+   Do While dividend > 0
+       modulo = (dividend - 1) Mod 26
+       columnName = Chr(65 + modulo) & columnName
+       dividend = Int((dividend - modulo) / 26)
+   Loop
+   ColumnNumberToLetter = columnName
+End Function
+
+' REM REMOVED: IsArrayAllocated 関数は削除
+' Public Function IsArrayAllocated(arr As Variant) As Boolean
+'    On Error Resume Next
+'    IsArrayAllocated = (LBound(arr) <= UBound(arr))
+'    If Err.Number <> 0 Then IsArrayAllocated = False
+'    On Error GoTo 0
+' End Function
+

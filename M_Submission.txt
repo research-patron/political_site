@@ -1,0 +1,551 @@
+Option Explicit
+
+Public Sub UpdateSubmissionSheetView()
+    Dim wsSubmission As Worksheet
+    Dim wsCalendar As Worksheet
+    Dim taskRowCal As Long
+    Dim taskName As String, keniDeadline As String
+    Dim submissionCols As Collection
+    Dim i As Long, muniRow As Long
+    Dim taskExists As Boolean
+    Dim headerRowForTaskName As Long
+
+    headerRowForTaskName = MUNILIST_HEADER_ROW - 2
+
+    Set wsSubmission = GetSheet(SUBMISSION_SHEET_NAME)
+    If wsSubmission Is Nothing Then Exit Sub
+    Set wsCalendar = GetSheet(CALENDAR_SHEET_NAME)
+    
+    Application.ScreenUpdating = False
+
+    If gSubmissionViewMode = VIEW_MODE_SINGLE_TASK Then
+        Call ClearSubmissionSingleTaskView(wsSubmission, False)
+
+        If gSelectedTaskNameForFilter = "" Then
+            Application.ScreenUpdating = True
+            Exit Sub
+        End If
+
+        taskName = gSelectedTaskNameForFilter
+        taskExists = False
+
+        If Not wsCalendar Is Nothing Then
+            taskRowCal = FindTaskRow(taskName, wsCalendar)
+            If taskRowCal > 0 Then
+                 If IsDate(wsCalendar.Cells(taskRowCal, "F").Value) Then
+                    keniDeadline = Format(CDate(wsCalendar.Cells(taskRowCal, "F").Value), "m/d")
+                Else
+                    keniDeadline = "-"
+                End If
+            Else
+                keniDeadline = "不明"
+            End If
+        Else
+            keniDeadline = "N/A"
+        End If
+        
+        wsSubmission.Cells(3, "C").Value = taskName
+        wsSubmission.Cells(4, "C").Value = keniDeadline
+
+        Set submissionCols = FindTaskSubmissionColumns(taskName, wsSubmission)
+        
+        If submissionCols Is Nothing Then
+             ShowError "「" & taskName & "」の提出状況データ列が提出状況管理シートに見つかりません。" & vbCrLf & _
+                       "（シートの " & headerRowForTaskName & " 行目でタスク名「" & taskName & "」が見つかりませんでした）"
+             taskExists = False
+        ElseIf submissionCols.Count <> 2 Then
+             ShowError "調査物「" & taskName & "」の提出状況データ列の数が不正です。"
+             taskExists = False
+        Else
+            taskExists = True
+        End If
+        
+        If taskExists Then
+            wsSubmission.Columns("D").Hidden = False
+            wsSubmission.Columns("E").Hidden = False
+            wsSubmission.Cells(MUNILIST_HEADER_ROW, "D").Value = "提出日"
+            wsSubmission.Cells(MUNILIST_HEADER_ROW, "E").Value = "提出状況"
+
+            If gMuniListInitialized Then
+                muniRow = MUNILIST_HEADER_ROW + 1
+                For i = LBound(gMuniList) To UBound(gMuniList)
+                    If muniRow > wsSubmission.Rows.Count Then Exit For
+                    If Not wsSubmission.Rows(muniRow).Hidden Then
+                        If IsDate(wsSubmission.Cells(muniRow, submissionCols(1)).Value) Then
+                            wsSubmission.Cells(muniRow, "D").Value = CDate(wsSubmission.Cells(muniRow, submissionCols(1)).Value)
+                            wsSubmission.Cells(muniRow, "D").NumberFormat = "m/d"
+                        Else
+                            wsSubmission.Cells(muniRow, "D").Value = wsSubmission.Cells(muniRow, submissionCols(1)).Value
+                            wsSubmission.Cells(muniRow, "D").NumberFormat = "m/d"
+                        End If
+                        wsSubmission.Cells(muniRow, "E").Value = wsSubmission.Cells(muniRow, submissionCols(2)).Value
+                    End If
+                    muniRow = muniRow + 1
+                Next i
+                Call RecalculateSubmissionSummary(wsSubmission, submissionCols, taskName)
+            Else
+                Debug.Print "UpdateSubmissionSheetView: gMuniList is not initialized or empty. Skipping muni list processing."
+            End If
+        Else
+            ' タスク列が見つからない場合、D列E列の市町村リスト部分をクリア
+            If gMuniListInitialized Then
+                muniRow = MUNILIST_HEADER_ROW + 1
+                For i = LBound(gMuniList) To UBound(gMuniList)
+                    If muniRow > wsSubmission.Rows.Count Then Exit For
+                     wsSubmission.Cells(muniRow, "D").ClearContents
+                     wsSubmission.Cells(muniRow, "E").ClearContents
+                    muniRow = muniRow + 1
+                Next i
+            End If
+            wsSubmission.Cells(5, "C").Value = "N/A" ' 提出率
+            wsSubmission.Cells(7, "C").Value = "タスクデータ列なし" ' 未提出リスト
+        End If
+        HideAllTaskColumns wsSubmission
+
+    ElseIf gSubmissionViewMode = VIEW_MODE_ALL_TASKS Then
+        Call ClearSubmissionSingleTaskView(wsSubmission, False)
+        wsSubmission.Columns("D").Hidden = True
+        wsSubmission.Columns("E").Hidden = True
+        If Not wsCalendar Is Nothing Then
+            Call ShowAllTasksInSubmission_Implementation(wsSubmission, wsCalendar)
+        Else
+            ShowError "全タスク表示にはカレンダーシートが必要です。"
+        End If
+    End If
+    
+    Call UpdateFilterButtonHighlight(wsSubmission)
+
+    Application.ScreenUpdating = True
+End Sub
+
+Public Sub ClearSubmissionSingleTaskView(wsSubmission As Worksheet, Optional clearFilterState As Boolean = True)
+    If wsSubmission Is Nothing Then Set wsSubmission = GetSheet(SUBMISSION_SHEET_NAME)
+    If wsSubmission Is Nothing Then Exit Sub
+
+    wsSubmission.Cells(3, "C").ClearContents
+    wsSubmission.Cells(4, "C").ClearContents
+    wsSubmission.Cells(5, "C").ClearContents
+    wsSubmission.Cells(7, "C").ClearContents
+
+    Dim lastMuniRow As Long
+    If gMuniListInitialized Then
+        lastMuniRow = MUNILIST_HEADER_ROW + UBound(gMuniList) - LBound(gMuniList) + 1
+        If lastMuniRow > MUNILIST_HEADER_ROW Then
+            wsSubmission.Range("D" & MUNILIST_HEADER_ROW + 1 & ":E" & lastMuniRow).ClearContents
+        End If
+    Else
+        Debug.Print "ClearSubmissionSingleTaskView: gMuniList is not initialized. Attempting to clear D:E based on column B."
+        Dim safeClearToRow As Long
+        safeClearToRow = GetLastDataRow(wsSubmission, "B")
+        If safeClearToRow > MUNILIST_HEADER_ROW Then
+             wsSubmission.Range("D" & MUNILIST_HEADER_ROW + 1 & ":E" & safeClearToRow).ClearContents
+        End If
+    End If
+    
+    wsSubmission.Cells(MUNILIST_HEADER_ROW, "D").Value = "提出日"
+    wsSubmission.Cells(MUNILIST_HEADER_ROW, "E").Value = "提出状況"
+
+    If clearFilterState Then
+        gCurrentMuniFilterType = MUNI_FILTER_TYPE_ALL_ENABLED
+        If gMuniListInitialized Then
+            Call ApplyMuniFilter(wsSubmission, gCurrentMuniFilterType)
+        End If
+    End If
+End Sub
+
+Public Sub HandleSubmissionDateChange(target As Range)
+    Dim wsSubmission As Worksheet
+    Dim submissionCols As Collection
+    Dim muniRow As Long, i As Long
+    Dim muniCode As String, muniListIndex As Long
+
+    If gSubmissionViewMode <> VIEW_MODE_SINGLE_TASK Then Exit Sub
+    If gSelectedTaskNameForFilter = "" Then Exit Sub
+
+    Set wsSubmission = target.Worksheet
+    
+    muniRow = target.Row
+    If muniRow <= MUNILIST_HEADER_ROW Then Exit Sub
+
+    ' REM MODIFIED: submissionColsの取得とチェックを先に行う
+    Set submissionCols = FindTaskSubmissionColumns(gSelectedTaskNameForFilter, wsSubmission)
+    If submissionCols Is Nothing Then
+        ShowError "HandleSubmissionDateChange: タスク「" & gSelectedTaskNameForFilter & "」のデータ列が提出状況管理シートに見つかりません。"
+        Application.EnableEvents = True ' 抜ける前にイベントを有効化
+        Application.ScreenUpdating = True
+        Exit Sub
+    ElseIf submissionCols.Count <> 2 Then
+         ShowError "HandleSubmissionDateChange: タスク「" & gSelectedTaskNameForFilter & "」のデータ列の数が不正です。"
+        Application.EnableEvents = True
+        Application.ScreenUpdating = True
+        Exit Sub
+    End If
+
+    muniCode = CStr(wsSubmission.Cells(muniRow, "B").Value)
+    muniListIndex = -1
+
+    If gMuniListInitialized Then
+        For i = LBound(gMuniList) To UBound(gMuniList)
+            If gMuniList(i).Code = muniCode Then
+                muniListIndex = i
+                Exit For
+            End If
+        Next i
+    End If
+    If muniListIndex = -1 Then Exit Sub
+
+    Application.EnableEvents = False
+    Application.ScreenUpdating = False
+
+    If IsDate(target.Value) Then
+        wsSubmission.Cells(muniRow, "E").Value = "○"
+        wsSubmission.Cells(muniRow, submissionCols(1)).Value = CDate(target.Value)
+        wsSubmission.Cells(muniRow, submissionCols(1)).NumberFormat = "m/d"
+        wsSubmission.Cells(muniRow, submissionCols(2)).Value = "○"
+    Else
+        target.ClearContents
+        wsSubmission.Cells(muniRow, "E").Value = "×"
+        wsSubmission.Cells(muniRow, submissionCols(1)).ClearContents
+        wsSubmission.Cells(muniRow, submissionCols(2)).Value = "×"
+    End If
+    wsSubmission.Cells(muniRow, "E").HorizontalAlignment = xlCenter
+
+    Call RecalculateSubmissionSummary(wsSubmission, submissionCols, gSelectedTaskNameForFilter)
+
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+End Sub
+
+Public Sub RecalculateSubmissionSummary(wsSubmission As Worksheet, taskSubmissionCols As Collection, targetTaskName As String)
+    Dim i As Long, muniRow As Long
+    Dim totalMuniCount As Long, submittedMuniCount As Long
+    Dim unsubmittedList As String
+    Dim submissionStatusColActual As Long
+
+    If wsSubmission Is Nothing Then Exit Sub
+    If Trim(targetTaskName) = "" Then Exit Sub
+    
+    If taskSubmissionCols Is Nothing Then
+        Debug.Print "RecalculateSubmissionSummary: Invalid taskSubmissionCols (Nothing) for task " & targetTaskName
+        wsSubmission.Cells(5, "C").Value = "エラー"
+        wsSubmission.Cells(7, "C").Value = "データ列エラー(1)"
+        Exit Sub
+    ElseIf taskSubmissionCols.Count <> 2 Then
+        Debug.Print "RecalculateSubmissionSummary: Invalid taskSubmissionCols count for task " & targetTaskName
+        wsSubmission.Cells(5, "C").Value = "エラー"
+        wsSubmission.Cells(7, "C").Value = "データ列エラー(2)"
+        Exit Sub
+    Else
+         submissionStatusColActual = taskSubmissionCols(2)
+    End If
+
+    totalMuniCount = 0
+    submittedMuniCount = 0
+    unsubmittedList = ""
+    
+    If gMuniListInitialized Then
+        muniRow = MUNILIST_HEADER_ROW + 1
+        For i = LBound(gMuniList) To UBound(gMuniList)
+            If muniRow > wsSubmission.Rows.Count Then Exit For
+            If Not wsSubmission.Rows(muniRow).Hidden And Not gMuniList(i).FilterOut Then
+                totalMuniCount = totalMuniCount + 1
+                If wsSubmission.Cells(muniRow, submissionStatusColActual).Value = "○" Then
+                    submittedMuniCount = submittedMuniCount + 1
+                Else
+                    If unsubmittedList <> "" Then unsubmittedList = unsubmittedList & ", "
+                    unsubmittedList = unsubmittedList & gMuniList(i).Name
+                End If
+            End If
+            muniRow = muniRow + 1
+        Next i
+    Else
+        Debug.Print "RecalculateSubmissionSummary: gMuniList not initialized."
+    End If
+
+    If totalMuniCount > 0 Then
+        wsSubmission.Cells(5, "C").Value = Round((submittedMuniCount / totalMuniCount) * 100, 1) & "%"
+    Else
+        wsSubmission.Cells(5, "C").Value = "N/A"
+    End If
+    wsSubmission.Cells(7, "C").Value = unsubmittedList
+End Sub
+
+Public Sub FilterAllMunicipalities_Click()
+    Dim wsSubmission As Worksheet
+    Set wsSubmission = GetSheet(SUBMISSION_SHEET_NAME)
+    If wsSubmission Is Nothing Then Exit Sub
+
+    gCurrentMuniFilterType = MUNI_FILTER_TYPE_ALL_ENABLED
+    If gMuniListInitialized Then Call ApplyMuniFilter(wsSubmission, gCurrentMuniFilterType)
+    Call UpdateSubmissionSheetView
+End Sub
+
+Public Sub FilterSpecificMunicipalities_Click()
+    Dim wsSubmission As Worksheet
+    Set wsSubmission = GetSheet(SUBMISSION_SHEET_NAME)
+    If wsSubmission Is Nothing Then Exit Sub
+
+    gCurrentMuniFilterType = MUNI_FILTER_TYPE_UNSUBMITTED
+    If gMuniListInitialized Then Call ApplyMuniFilter(wsSubmission, gCurrentMuniFilterType)
+    Call UpdateSubmissionSheetView
+End Sub
+
+Public Sub ApplyMuniFilter(wsSubmission As Worksheet, filterType As String)
+    Dim i As Long, muniRow As Long
+    Dim taskSubmissionCols As Collection
+    Dim statusColForFilterActual As Long
+
+    If wsSubmission Is Nothing Then Exit Sub
+    If Not gMuniListInitialized Then
+        ShowError "市町村リストが初期化されていません。フィルターを実行できません。"
+        Exit Sub
+    End If
+    
+    Application.ScreenUpdating = False
+
+    muniRow = MUNILIST_HEADER_ROW + 1
+    
+    If gSubmissionViewMode = VIEW_MODE_SINGLE_TASK And gSelectedTaskNameForFilter <> "" Then
+        Set taskSubmissionCols = FindTaskSubmissionColumns(gSelectedTaskNameForFilter, wsSubmission)
+        If Not taskSubmissionCols Is Nothing And taskSubmissionCols.Count = 2 Then
+            statusColForFilterActual = taskSubmissionCols(2)
+        Else
+            ShowError "未提出フィルター: 選択中タスク「" & gSelectedTaskNameForFilter & "」のデータ列が見つかりません。全市町村を表示します。"
+            gCurrentMuniFilterType = MUNI_FILTER_TYPE_ALL_ENABLED
+            filterType = MUNI_FILTER_TYPE_ALL_ENABLED
+            statusColForFilterActual = wsSubmission.Columns("E").Column
+        End If
+    Else
+        If filterType = MUNI_FILTER_TYPE_UNSUBMITTED Then
+            ShowError "未提出フィルターは単一タスク表示時のみ有効です。全市町村を表示します。"
+            gCurrentMuniFilterType = MUNI_FILTER_TYPE_ALL_ENABLED
+            filterType = MUNI_FILTER_TYPE_ALL_ENABLED
+        End If
+         statusColForFilterActual = wsSubmission.Columns("E").Column
+    End If
+
+    For i = LBound(gMuniList) To UBound(gMuniList)
+        If muniRow > wsSubmission.Rows.Count Then Exit For
+        If gMuniList(i).FilterOut Then
+            wsSubmission.Rows(muniRow).Hidden = True
+        Else
+            Select Case filterType
+                Case MUNI_FILTER_TYPE_ALL_ENABLED
+                    wsSubmission.Rows(muniRow).Hidden = False
+                Case MUNI_FILTER_TYPE_UNSUBMITTED
+                    If gSubmissionViewMode = VIEW_MODE_SINGLE_TASK And gSelectedTaskNameForFilter <> "" And Not taskSubmissionCols Is Nothing And taskSubmissionCols.Count = 2 Then
+                        If wsSubmission.Cells(muniRow, statusColForFilterActual).Value <> "○" Then
+                            wsSubmission.Rows(muniRow).Hidden = False
+                        Else
+                            wsSubmission.Rows(muniRow).Hidden = True
+                        End If
+                    Else
+                        wsSubmission.Rows(muniRow).Hidden = False
+                    End If
+                Case Else
+                    wsSubmission.Rows(muniRow).Hidden = False
+            End Select
+        End If
+        muniRow = muniRow + 1
+    Next i
+    Application.ScreenUpdating = True
+End Sub
+
+Public Sub HighlightFilterButton(sht As Worksheet, buttonName As String)
+    Dim btnShape As Shape
+    On Error Resume Next
+    Set btnShape = sht.Shapes(buttonName)
+    If btnShape Is Nothing Then
+        Debug.Print "HighlightFilterButton: Shape '" & buttonName & "' not found on sheet '" & sht.Name & "'."
+        Exit Sub
+    End If
+    On Error GoTo 0
+
+    btnShape.Fill.Visible = msoTrue
+    btnShape.Fill.ForeColor.RGB = COLOR_FILTER_BUTTON_SELECTED
+    btnShape.Line.Visible = msoTrue
+    btnShape.Line.ForeColor.RGB = RGB(0, 0, 0)
+    btnShape.Line.Weight = 1.5
+End Sub
+
+Public Sub UnhighlightFilterButton(sht As Worksheet, buttonName As String)
+    Dim btnShape As Shape
+    On Error Resume Next
+    Set btnShape = sht.Shapes(buttonName)
+    If btnShape Is Nothing Then
+        Debug.Print "UnhighlightFilterButton: Shape '" & buttonName & "' not found on sheet '" & sht.Name & "'."
+        Exit Sub
+    End If
+    On Error GoTo 0
+
+    btnShape.Fill.Visible = msoFalse
+    btnShape.Line.Visible = msoTrue
+    btnShape.Line.ForeColor.RGB = RGB(128, 128, 128)
+    btnShape.Line.Weight = 0.75
+End Sub
+
+Public Sub ShowAllTasksInSubmission_Click()
+    Dim wsSubmission As Worksheet
+    Set wsSubmission = GetSheet(SUBMISSION_SHEET_NAME)
+    If wsSubmission Is Nothing Then Exit Sub
+
+    gSubmissionViewMode = VIEW_MODE_ALL_TASKS
+    gSelectedTaskNameForFilter = ""
+    
+    gCurrentMuniFilterType = MUNI_FILTER_TYPE_ALL_ENABLED
+    If gMuniListInitialized Then Call ApplyMuniFilter(wsSubmission, gCurrentMuniFilterType)
+    
+    Call UpdateSubmissionSheetView
+End Sub
+
+
+Private Sub ShowAllTasksInSubmission_Implementation(wsSubmission As Worksheet, wsCalendar As Worksheet)
+    Dim lastCalTaskRow As Long, calRow As Long
+    Dim taskName As String
+    Dim submissionCols As Collection
+    Dim nextDisplayCol As Long
+    Dim i As Long, muniRow As Long
+    Dim dataStartRowCal As Long
+    Dim headerRowForTaskName As Long
+    
+    headerRowForTaskName = MUNILIST_HEADER_ROW - 2
+    dataStartRowCal = CALENDAR_HEADER_ROWS + 1
+    
+    HideAllTaskColumns wsSubmission
+    
+    nextDisplayCol = Columns("F").Column
+
+    If wsCalendar Is Nothing Then
+        ShowError "カレンダーシートが見つかりません。全タスクを表示できません。"
+        Exit Sub
+    End If
+    lastCalTaskRow = GetLastDataRow(wsCalendar, "C")
+    If lastCalTaskRow < dataStartRowCal Then Exit Sub
+
+    If Not gMuniListInitialized Then
+        ShowError "市町村リストが初期化されていません。全タスクを表示できません。"
+        Exit Sub
+    End If
+
+    For calRow = dataStartRowCal To lastCalTaskRow
+        taskName = Trim(CStr(wsCalendar.Cells(calRow, "C").Value))
+
+        If taskName <> "" Then
+            Set submissionCols = FindTaskSubmissionColumns(taskName, wsSubmission)
+            
+            If Not submissionCols Is Nothing And submissionCols.Count = 2 Then
+                If nextDisplayCol > Columns("IV").Column - 1 Then Exit For
+                
+                wsSubmission.Cells(headerRowForTaskName, nextDisplayCol).Value = taskName
+                wsSubmission.Cells(MUNILIST_HEADER_ROW, nextDisplayCol).Value = "提出日"
+                wsSubmission.Cells(MUNILIST_HEADER_ROW, nextDisplayCol + 1).Value = "状況"
+                With wsSubmission.Range(wsSubmission.Cells(MUNILIST_HEADER_ROW, nextDisplayCol), wsSubmission.Cells(MUNILIST_HEADER_ROW, nextDisplayCol + 1))
+                    .HorizontalAlignment = xlCenter
+                    .Font.Bold = True
+                End With
+                
+                muniRow = MUNILIST_HEADER_ROW + 1
+                For i = LBound(gMuniList) To UBound(gMuniList)
+                    If muniRow > wsSubmission.Rows.Count Then Exit For
+                    
+                    If IsDate(wsSubmission.Cells(muniRow, submissionCols(1)).Value) Then
+                        wsSubmission.Cells(muniRow, nextDisplayCol).Value = CDate(wsSubmission.Cells(muniRow, submissionCols(1)).Value)
+                        wsSubmission.Cells(muniRow, nextDisplayCol).NumberFormat = "m/d"
+                    Else
+                        wsSubmission.Cells(muniRow, nextDisplayCol).Value = ""
+                    End If
+                    wsSubmission.Cells(muniRow, nextDisplayCol + 1).Value = wsSubmission.Cells(muniRow, submissionCols(2)).Value
+                    wsSubmission.Cells(muniRow, nextDisplayCol + 1).HorizontalAlignment = xlCenter
+                    
+                    muniRow = muniRow + 1
+                Next i
+                
+                wsSubmission.Columns(nextDisplayCol).Hidden = False
+                wsSubmission.Columns(nextDisplayCol + 1).Hidden = False
+                wsSubmission.Columns(nextDisplayCol).ColumnWidth = 10
+                wsSubmission.Columns(nextDisplayCol + 1).ColumnWidth = 10
+
+                nextDisplayCol = nextDisplayCol + 2
+            Else
+                 Debug.Print "ShowAllTasksInSubmission_Implementation: Submission columns for task '" & taskName & "' not found. Skipping."
+            End If
+        End If
+    Next calRow
+End Sub
+
+Private Sub HideAllTaskColumns(wsSubmission As Worksheet)
+    Dim c As Long
+    Dim headerRowForTaskName As Long
+    headerRowForTaskName = MUNILIST_HEADER_ROW - 2
+    
+    If wsSubmission Is Nothing Then Exit Sub
+
+    On Error Resume Next
+    For c = Columns("F").Column To Columns("IV").Column
+        wsSubmission.Columns(c).Hidden = True
+        wsSubmission.Cells(headerRowForTaskName, c).ClearContents
+        wsSubmission.Cells(MUNILIST_HEADER_ROW, c).ClearContents
+        
+        Dim lastMuniDataRow As Long
+        lastMuniDataRow = GetLastDataRow(wsSubmission, "B")
+        If lastMuniDataRow < MUNILIST_HEADER_ROW + 1 And gMuniListInitialized Then
+            lastMuniDataRow = MUNILIST_HEADER_ROW + UBound(gMuniList) - LBound(gMuniList)
+        End If
+        If lastMuniDataRow > MUNILIST_HEADER_ROW Then
+            wsSubmission.Range(wsSubmission.Cells(MUNILIST_HEADER_ROW + 1, c), wsSubmission.Cells(lastMuniDataRow, c)).ClearContents
+        End If
+    Next c
+    On Error GoTo 0
+End Sub
+
+Private Sub UpdateFilterButtonHighlight(wsSubmission As Worksheet)
+    If wsSubmission Is Nothing Then Exit Sub
+    
+    If gCurrentMuniFilterType = MUNI_FILTER_TYPE_ALL_ENABLED Then
+        Call HighlightFilterButton(wsSubmission, BTN_NAME_FILTER_ALL)
+        Call UnhighlightFilterButton(wsSubmission, BTN_NAME_FILTER_SPECIFIC)
+    ElseIf gCurrentMuniFilterType = MUNI_FILTER_TYPE_UNSUBMITTED Then
+        Call UnhighlightFilterButton(wsSubmission, BTN_NAME_FILTER_ALL)
+        Call HighlightFilterButton(wsSubmission, BTN_NAME_FILTER_SPECIFIC)
+    Else
+        Call UnhighlightFilterButton(wsSubmission, BTN_NAME_FILTER_ALL)
+        Call UnhighlightFilterButton(wsSubmission, BTN_NAME_FILTER_SPECIFIC)
+    End If
+End Sub
+
+Public Sub DeleteTaskSubmissionColumns(wsSubmission As Worksheet, taskName As String)
+    Dim submissionCols As Collection
+    Dim headerRowForTaskName As Long
+    
+    headerRowForTaskName = MUNILIST_HEADER_ROW - 2
+
+    If wsSubmission Is Nothing Or Trim(taskName) = "" Then Exit Sub
+
+    Set submissionCols = FindTaskSubmissionColumns(taskName, wsSubmission)
+
+    If Not submissionCols Is Nothing Then
+        If submissionCols.Count = 2 Then
+            wsSubmission.Cells(headerRowForTaskName, submissionCols(1)).ClearContents
+            
+            wsSubmission.Cells(MUNILIST_HEADER_ROW, submissionCols(1)).ClearContents
+            wsSubmission.Cells(MUNILIST_HEADER_ROW, submissionCols(2)).ClearContents
+            
+            Dim lastMuniDataRow As Long
+            lastMuniDataRow = GetLastDataRow(wsSubmission, "B")
+             If lastMuniDataRow < MUNILIST_HEADER_ROW + 1 And gMuniListInitialized Then
+                lastMuniDataRow = MUNILIST_HEADER_ROW + UBound(gMuniList) - LBound(gMuniList)
+            End If
+
+            If lastMuniDataRow >= MUNILIST_HEADER_ROW + 1 Then
+                wsSubmission.Range(wsSubmission.Cells(MUNILIST_HEADER_ROW + 1, submissionCols(1)), wsSubmission.Cells(lastMuniDataRow, submissionCols(2))).ClearContents
+            End If
+            
+            Debug.Print "Submission columns for task '" & taskName & "' cleared."
+        Else
+             Debug.Print "DeleteTaskSubmissionColumns: Task '" & taskName & "' columns found, but count is not 2. Count: " & submissionCols.Count
+        End If
+    Else
+        Debug.Print "DeleteTaskSubmissionColumns: Task '" & taskName & "' columns not found to delete."
+    End If
+End Sub
+
