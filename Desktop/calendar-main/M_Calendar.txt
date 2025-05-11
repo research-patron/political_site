@@ -28,8 +28,7 @@ Public Sub DrawCalendar()
     For Each btnShape In wsCalendar.Shapes
         If btnShape.Type = msoFormControl And btnShape.FormControlType = xlButtonControl Then
             If btnShape.Name Like "btnPrevMonth_*" Or btnShape.Name Like "btnNextMonth_*" Or _
-               btnShape.Name Like "btnDelTask_*" Or btnShape.Name Like "btnShowSub_*" Or _
-               btnShape.Name Like "btnRefresh_*" Then
+               btnShape.Name Like "btnDelTask_*" Or btnShape.Name Like "btnShowSub_*" Then
                 btnShape.Delete
             End If
         End If
@@ -95,9 +94,6 @@ Public Sub DrawCalendar()
         wsCalendar.Cells(1, ganttStartColNum + c).NumberFormat = "0"
         wsCalendar.Cells(2, ganttStartColNum + c).Value = Day(tempDate)
         wsCalendar.Cells(2, ganttStartColNum + c).NumberFormat = "d"
-
-        ' カレンダー表示領域のセル幅を3.5に設定
-        wsCalendar.Columns(ganttStartColNum + c).ColumnWidth = 3.5
         
         With wsCalendar.Range(wsCalendar.Cells(1, ganttStartColNum + c), wsCalendar.Cells(CALENDAR_HEADER_ROWS, ganttStartColNum + c))
             If tempDate = Date Then
@@ -162,19 +158,10 @@ Public Sub DrawCalendar()
             
             Dim btnDel As Button, btnSub As Button
             Set btnDel = CreateButton(wsCalendar, wsCalendar.Cells(r, "A"), "×", "M_Calendar.DeleteTask_FromButton", , wsCalendar.Rows(r).Height * 0.9, 8, "btnDelTask_" & r)
-            btnDel.Font.Name = DEFAULT_FONT_NAME
             
             Dim submissionPctText As String
             submissionPctText = GetTaskSubmissionPercentage(taskNameCurrentRow, GetSheet(SUBMISSION_SHEET_NAME), CDate(wsCalendar.Cells(r, "F").Value))
-            ' 提出状況: の接頭辞を消去して%のみを表示
-            If submissionPctText <> "" Then
-                If submissionPctText Like "*%*" Then
-                    ' 数値のみを抽出して表示 (例: 50%)
-                    submissionPctText = submissionPctText
-                End If
-            End If
             Set btnSub = CreateButton(wsCalendar, wsCalendar.Cells(r, "H"), submissionPctText, "M_Calendar.ShowTaskSubmissionStatus_FromButton", , wsCalendar.Rows(r).Height * 0.9, 8, "btnShowSub_" & r)
-            btnSub.Font.Name = DEFAULT_FONT_NAME
 
             If IsDate(wsCalendar.Cells(r, "E").Value) And IsDate(wsCalendar.Cells(r, "F").Value) Then
                 taskStartDate = CDate(wsCalendar.Cells(r, "E").Value)
@@ -202,58 +189,56 @@ Public Sub DrawCalendar()
     
     Call UpdateReminders(wsCalendar)
 
+    Dim navButtonCell As Range
     Dim buttonHeight As Double
-    Dim refreshButtonRow As Long, navButtonStartRow As Long, navButtonEndRow As Long
-    Dim refreshButtonCell As Range, prevButtonCell As Range, nextButtonCell As Range
-    Dim totalTaskHeight As Double
+    Dim navButtonStartRow As Long, navButtonEndRow As Long
 
-    ' 更新ボタンのセルを設定（I1〜I2まで）
-    refreshButtonRow = 1
-    Set refreshButtonCell = wsCalendar.Cells(refreshButtonRow, "I")
-
-    ' 前月ボタンのセルをタスク開始行に設定
-    navButtonStartRow = dataStartRow
-    Set prevButtonCell = wsCalendar.Cells(navButtonStartRow, "I")
-
-    ' 更新ボタンの高さを2行分に設定
-    Dim refreshButtonHeight As Double
-    refreshButtonHeight = wsCalendar.Rows("1:2").Height
-
-    ' ナビゲーションボタンの高さを計算
-    buttonHeight = 0
-    Dim taskRow As Long
-    For taskRow = navButtonStartRow To IIf(lastTaskRow >= dataStartRow, lastTaskRow, dataStartRow)
-        buttonHeight = buttonHeight + wsCalendar.Rows(taskRow).Height
-    Next taskRow
-
-    ' 更新ボタンを作成（I1-I2セル）
-    Dim btnRefresh As Button
-    Set btnRefresh = CreateButton(wsCalendar, refreshButtonCell, "更新", "M_Calendar.RefreshCalendar_Click", wsCalendar.Columns("I").Width, refreshButtonHeight, 10, "btnRefresh_" & Format(Now, "yyyymmddhhmmss"))
-    btnRefresh.Font.Name = DEFAULT_FONT_NAME
-
-    If Not prevButtonCell Is Nothing Then
-        ' 前月ボタンを作成
-        Dim btnPrev As Button
-        Set btnPrev = CreateButton(wsCalendar, prevButtonCell, "前月", "M_Calendar.PrevMonth_Click", wsCalendar.Columns("I").Width, buttonHeight, 10, "btnPrevMonth_" & Format(Now, "yyyymmddhhmmss"))
-        btnPrev.Font.Name = DEFAULT_FONT_NAME
+    ' REM MODIFIED: ナビゲーションボタンの表示行を調整
+    navButtonStartRow = dataStartRow ' 常にデータ開始行から
+    If lastTaskRow >= dataStartRow Then ' タスクが1つ以上ある場合
+        navButtonEndRow = lastTaskRow   ' 最終タスク行まで
+    Else ' タスクがない場合
+        navButtonEndRow = dataStartRow   ' データ開始行の1行分の高さ
     End If
-
+    
+    ' 前月ボタン
+    Set navButtonCell = wsCalendar.Range("I" & navButtonStartRow & ":I" & navButtonEndRow)
+    
+    If Not navButtonCell Is Nothing Then
+        buttonHeight = navButtonCell.Height
+        If navButtonCell.Cells.CountLarge > 1 Then
+            Application.DisplayAlerts = False
+            navButtonCell.Merge
+            Application.DisplayAlerts = True
+        End If
+        navButtonCell.VerticalAlignment = xlCenter
+        navButtonCell.HorizontalAlignment = xlCenter
+        
+        Dim btnPrev As Button
+        Set btnPrev = CreateButton(wsCalendar, navButtonCell, "前月", "M_Calendar.PrevMonth_Click", wsCalendar.Columns("I").Width, buttonHeight, 10, "btnPrevMonth_" & Format(Now, "yyyymmddhhmmss"))
+    End If
+    
     ' 次月ボタン
     If ganttEndColNum > 0 And ganttEndColNum < Columns("IV").Column Then
+        Dim nextMonthButtonColRange As Range
         Dim nextButtonCol As Long
         nextButtonCol = ganttEndColNum + 1
+        
+        Set nextMonthButtonColRange = wsCalendar.Range(wsCalendar.Cells(navButtonStartRow, nextButtonCol), wsCalendar.Cells(navButtonEndRow, nextButtonCol))
+        
+        If Not nextMonthButtonColRange Is Nothing Then
+            buttonHeight = nextMonthButtonColRange.Height
+            If nextMonthButtonColRange.Cells.CountLarge > 1 Then
+                Application.DisplayAlerts = False
+                nextMonthButtonColRange.Merge
+                Application.DisplayAlerts = True
+            End If
+            wsCalendar.Columns(nextButtonCol).ColumnWidth = 5
+            nextMonthButtonColRange.VerticalAlignment = xlCenter
+            nextMonthButtonColRange.HorizontalAlignment = xlCenter
 
-        ' Always ensure the column width is exactly 5
-        wsCalendar.Columns(nextButtonCol).ColumnWidth = 5
-
-        ' 次月ボタン用のセル（navButtonStartRowは既に設定済み）
-        Set nextButtonCell = wsCalendar.Cells(navButtonStartRow, nextButtonCol)
-
-        If Not nextButtonCell Is Nothing Then
-            ' 次月ボタンを作成
             Dim btnNext As Button
-            Set btnNext = CreateButton(wsCalendar, nextButtonCell, "次月", "M_Calendar.NextMonth_Click", wsCalendar.Columns(nextButtonCol).Width, buttonHeight, 10, "btnNextMonth_" & Format(Now, "yyyymmddhhmmss"))
-            btnNext.Font.Name = DEFAULT_FONT_NAME
+            Set btnNext = CreateButton(wsCalendar, nextMonthButtonColRange, "次月", "M_Calendar.NextMonth_Click", wsCalendar.Columns(nextButtonCol).Width, buttonHeight, 10, "btnNextMonth_" & Format(Now, "yyyymmddhhmmss"))
         End If
     End If
     
@@ -372,7 +357,7 @@ Public Sub DeleteTask_FromButton()
         Call M_Submission.DeleteTaskSubmissionColumns(wsSubmission, taskName)
 
         Call DrawCalendar
-
+        
         If Not wsSubmission Is Nothing Then
             If gSubmissionViewMode = VIEW_MODE_ALL_TASKS Then
                 Call M_Submission.ShowAllTasksInSubmission_Click
@@ -396,8 +381,6 @@ Public Sub ShowTaskSubmissionStatus_FromButton()
     Dim wsCalendar As Worksheet
     Dim taskName As String
     Dim dataStartRow As Long
-    Dim i As Long
-    Dim lastCol As Long
 
     dataStartRow = CALENDAR_HEADER_ROWS + 1
 
@@ -416,101 +399,26 @@ Public Sub ShowTaskSubmissionStatus_FromButton()
 
     taskRow = btn.TopLeftCell.row
     If taskRow < dataStartRow Then Exit Sub
-
+    
     taskName = Trim(CStr(wsCalendar.Cells(taskRow, "C").Value))
     If taskName = "" Then
         ShowError "タスク名が空です。処理を中断します。"
         Exit Sub
     End If
-
+    
     gSelectedTaskNameForFilter = taskName
     gSubmissionViewMode = VIEW_MODE_SINGLE_TASK
-
-    ' 提出状況管理シートを取得
+    
+    Call M_Submission.UpdateSubmissionSheetView
+    
     Dim wsSubmission As Worksheet
     Set wsSubmission = GetSheet(SUBMISSION_SHEET_NAME)
-    If wsSubmission Is Nothing Then
-        ShowError "シート「" & SUBMISSION_SHEET_NAME & "」が見つかりません。"
-        Exit Sub
-    End If
-
-    ' 重要：該当するタスクの列を明示的に探す
-    Dim submissionCols As Collection
-
-    ' テスト1の場合、I列とJ列を直接使用する特別処理
-    If StrComp(Trim(taskName), "テスト1", vbTextCompare) = 0 Then
-        Debug.Print "特別処理: テスト1用にI列とJ列を直接設定します"
-        Set submissionCols = New Collection
-        submissionCols.Add Columns("I").Column  ' I列 (提出日列)
-        submissionCols.Add Columns("J").Column  ' J列 (提出状況列)
+    If Not wsSubmission Is Nothing Then
+        wsSubmission.Activate
     Else
-        ' 通常の検索処理
-        Set submissionCols = FindTaskSubmissionColumns(taskName, wsSubmission)
+        ShowError "シート「" & SUBMISSION_SHEET_NAME & "」が見つかりません。"
     End If
-
-    ' 見つからない場合はエラー
-    If submissionCols Is Nothing Then
-        ShowError "タスク「" & taskName & "」の提出状況列が見つかりません。"
-        Exit Sub
-    End If
-
-    ' 強化したデバッグ情報を出力
-    Debug.Print "---------- ShowTaskSubmissionStatus_FromButton ----------"
-    Debug.Print "タスク名: " & taskName
-    Debug.Print "検索結果: 列I番号=" & submissionCols(1) & " (列" & ConvertToColLetter(submissionCols(1)) & ")"
-    Debug.Print "検索結果: 列J番号=" & submissionCols(2) & " (列" & ConvertToColLetter(submissionCols(2)) & ")"
-
-    ' すべての列を一旦非表示にする（A列とB列は表示したままにする）
-    lastCol = wsSubmission.Cells(1, Columns.Count).End(xlToLeft).Column
-    Application.ScreenUpdating = False
-    For i = 3 To lastCol ' A列とB列は常に表示
-        wsSubmission.Columns(i).Hidden = True
-    Next i
-
-    ' 必須列を表示する（自治体リスト関連の列）
-    wsSubmission.Columns(1).Hidden = False  ' A列 (No.)
-    wsSubmission.Columns(2).Hidden = False  ' B列 (自治体名)
-
-    ' 検索で見つかったタスク列を表示
-    wsSubmission.Columns(submissionCols(1)).Hidden = False ' 提出日列
-    wsSubmission.Columns(submissionCols(2)).Hidden = False ' 提出状況列
-
-    Debug.Print "列の表示設定: A列, B列, " & ConvertToColLetter(submissionCols(1)) & "列, " & ConvertToColLetter(submissionCols(2)) & "列 を表示"
-
-    ' 提出状況ビューを更新
-    Call M_Submission.UpdateSubmissionSheetView
-
-    ' タスク名を再度設定（UpdateSubmissionSheetViewで上書きされる可能性があるため）
-    wsSubmission.Cells(MUNILIST_HEADER_ROW - 1, submissionCols(1)).Value = taskName
-    wsSubmission.Cells(MUNILIST_HEADER_ROW - 1, submissionCols(1)).Font.Color = RGB(255, 255, 255)
-
-    Application.ScreenUpdating = True
-
-    ' シートをアクティブにする
-    wsSubmission.Activate
-
-    ' 最終デバッグ出力
-    Debug.Print "提出状況シートの表示が完了しました。"
-    Debug.Print "--------------------------------------------------------"
 End Sub
-
-' 列番号を列文字（A, B, C...）に変換するヘルパー関数
-Private Function ConvertToColLetter(colNum As Long) As String
-    Dim dividend As Long
-    Dim modulo As Long
-    Dim columnName As String
-
-    dividend = colNum
-    columnName = ""
-
-    Do While dividend > 0
-        modulo = (dividend - 1) Mod 26
-        columnName = Chr(65 + modulo) & columnName
-        dividend = Int((dividend - modulo) / 26)
-    Loop
-
-    ConvertToColLetter = columnName
-End Function
 
 Private Function GetTaskSubmissionPercentage(taskName As String, wsSubmission As Worksheet, taskDeadline As Date) As String
     Dim submissionCols As Collection
@@ -518,14 +426,11 @@ Private Function GetTaskSubmissionPercentage(taskName As String, wsSubmission As
     Dim totalVisibleMuniCount As Long, submittedMuniCount As Long
     Dim submissionStatusCol As Long
     Dim muniListStartRow As Long
-    Dim headerRowForTaskName As Long
 
-    headerRowForTaskName = MUNILIST_HEADER_ROW - 1
     GetTaskSubmissionPercentage = "0%"
     If wsSubmission Is Nothing Or Trim(taskName) = "" Then Exit Function
     If Not gMuniListInitialized Then Exit Function
 
-    ' タスク固有の列を検索
     Set submissionCols = FindTaskSubmissionColumns(taskName, wsSubmission)
     If submissionCols Is Nothing Then
         Debug.Print "GetTaskSubmissionPercentage: Submission columns not found for task '" & taskName & "'."
@@ -535,9 +440,6 @@ Private Function GetTaskSubmissionPercentage(taskName As String, wsSubmission As
         Exit Function
     End If
     submissionStatusCol = submissionCols(2)
-
-    ' デバッグプリント
-    Debug.Print "GetTaskSubmissionPercentage: Task '" & taskName & "' using columns: " & submissionCols(1) & ", " & submissionCols(2)
 
     totalVisibleMuniCount = 0
     submittedMuniCount = 0
@@ -562,3 +464,5 @@ Private Function GetTaskSubmissionPercentage(taskName As String, wsSubmission As
         GetTaskSubmissionPercentage = "0%"
     End If
 End Function
+
+

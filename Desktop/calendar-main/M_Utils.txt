@@ -1,475 +1,177 @@
 Option Explicit
 
-Public Function GetSheet(sheetName As String) As Worksheet
-    On Error Resume Next
-    Set GetSheet = ThisWorkbook.Sheets(sheetName)
-    If Err.Number <> 0 Then
-        Set GetSheet = Nothing
-        Debug.Print "Error in GetSheet: Sheet '" & sheetName & "' not found."
+Public Sub AddTask_Click()
+    Dim wsTaskAdd As Worksheet
+    Dim wsCalendar As Worksheet
+    Dim wsSubmission As Worksheet
+
+    Dim taskName As String, 担当者 As String, 依頼日Str As String, 〆切日Str As String, 地整〆切日Str As String
+    Dim newRowCal As Long
+    Dim dataStartRowCal As Long
+
+    dataStartRowCal = CALENDAR_HEADER_ROWS + 1
+
+    Set wsTaskAdd = GetSheet(TASK_ADD_SHEET_NAME)
+    Set wsCalendar = GetSheet(CALENDAR_SHEET_NAME)
+    Set wsSubmission = GetSheet(SUBMISSION_SHEET_NAME)
+
+    If wsTaskAdd Is Nothing Or wsCalendar Is Nothing Or wsSubmission Is Nothing Then
+        ShowError "必要なシートが見つかりません。" & vbCrLf & _
+                  IIf(wsTaskAdd Is Nothing, TASK_ADD_SHEET_NAME & "なし ", "") & _
+                  IIf(wsCalendar Is Nothing, CALENDAR_SHEET_NAME & "なし ", "") & _
+                  IIf(wsSubmission Is Nothing, SUBMISSION_SHEET_NAME & "なし", "")
+        Exit Sub
     End If
-    On Error GoTo 0
-End Function
+
+    taskName = Trim(wsTaskAdd.Cells(2, "B").Value)
+    担当者 = Trim(wsTaskAdd.Cells(3, "B").Value)
+    依頼日Str = Trim(wsTaskAdd.Cells(4, "B").Value)
+    〆切日Str = Trim(wsTaskAdd.Cells(5, "B").Value)
+    地整〆切日Str = Trim(wsTaskAdd.Cells(6, "B").Value)
+
+    If Not ValidateTaskInput(taskName, 担当者, 依頼日Str, 〆切日Str, 地整〆切日Str, wsCalendar) Then Exit Sub
+
+    Application.ScreenUpdating = False
+    Application.EnableEvents = False
+    
+    newRowCal = GetLastDataRow(wsCalendar, "C")
+    If newRowCal < dataStartRowCal Then
+        newRowCal = dataStartRowCal
+    ElseIf wsCalendar.Cells(newRowCal, "C").Value <> "" Then
+        newRowCal = newRowCal + 1
+    End If
+    If newRowCal = 0 And dataStartRowCal > 0 Then newRowCal = dataStartRowCal
 
 
-Public Sub ClearSheetButtons(sht As Worksheet)
-    Dim shp As Shape
-    On Error Resume Next
-    For Each shp In sht.Shapes
-        If shp.Type = msoFormControl And shp.FormControlType = xlButtonControl Then
-            shp.Delete
+    With wsCalendar
+        .Cells(newRowCal, "C").Value = taskName
+        .Cells(newRowCal, "D").Value = 担当者
+        .Cells(newRowCal, "E").Value = CDate(依頼日Str)
+        .Cells(newRowCal, "E").NumberFormat = "m/d"
+        .Cells(newRowCal, "F").Value = CDate(〆切日Str)
+        .Cells(newRowCal, "F").NumberFormat = "m/d"
+        If 地整〆切日Str <> "-" And 地整〆切日Str <> "" Then
+            .Cells(newRowCal, "G").Value = CDate(地整〆切日Str)
+            .Cells(newRowCal, "G").NumberFormat = "m/d"
+        Else
+            .Cells(newRowCal, "G").Value = "-"
         End If
-    Next shp
-    On Error GoTo 0
+        Dim btnDel As Button, btnSub As Button
+        Set btnDel = CreateButton(wsCalendar, .Cells(newRowCal, "A"), "×", "M_Calendar.DeleteTask_FromButton", , .Rows(newRowCal).Height * 0.9, 8)
+        Set btnSub = CreateButton(wsCalendar, .Cells(newRowCal, "H"), "表示", "M_Calendar.ShowTaskSubmissionStatus_FromButton", , .Rows(newRowCal).Height * 0.9, 8)
+        If btnDel Is Nothing Or btnSub Is Nothing Then
+            ShowError "タスク行へのボタン作成に失敗しました。"
+        End If
+    End With
+
+    Dim nextDataCol As Long
+    Dim c As Long
+    Dim headerRowForTaskName As Long
+    headerRowForTaskName = MUNILIST_HEADER_ROW - 2
+
+    nextDataCol = 0
+    For c = Columns("F").Column To Columns("IV").Column Step 2
+        If Trim(CStr(wsSubmission.Cells(headerRowForTaskName, c).Value)) = "" Then
+            nextDataCol = c
+            Exit For
+        End If
+    Next c
+
+    If nextDataCol = 0 Then
+        ShowError "提出状況管理シートに新しいタスクを追加する列スペースがありません。（F列?IV列が全て使用中）"
+        GoTo CleanUpAndExit
+    End If
+
+    With wsSubmission
+        .Cells(headerRowForTaskName, nextDataCol).Value = taskName
+        .Cells(MUNILIST_HEADER_ROW, nextDataCol).Value = "提出日"
+        .Cells(MUNILIST_HEADER_ROW, nextDataCol + 1).Value = "提出状況"
+        With .Range(.Cells(MUNILIST_HEADER_ROW, nextDataCol), .Cells(MUNILIST_HEADER_ROW, nextDataCol + 1))
+            .HorizontalAlignment = xlCenter
+            .Font.Bold = True
+        End With
+
+        Dim muniListLastRow As Long
+        muniListLastRow = GetLastDataRow(wsSubmission, "B")
+        If muniListLastRow < MUNILIST_HEADER_ROW + 1 And gMuniListInitialized Then ' REM MODIFIED: フラグ確認
+             muniListLastRow = MUNILIST_HEADER_ROW + UBound(gMuniList) - LBound(gMuniList)
+        End If
+
+        If muniListLastRow >= MUNILIST_HEADER_ROW + 1 Then
+            Dim r As Long
+            For r = MUNILIST_HEADER_ROW + 1 To muniListLastRow
+                 If Trim(CStr(wsSubmission.Cells(r, "B").Value)) <> "" Or Trim(CStr(wsSubmission.Cells(r, "C").Value)) <> "" Then
+                    .Cells(r, nextDataCol).NumberFormat = "m/d"
+                    .Cells(r, nextDataCol + 1).Value = "×"
+                    .Cells(r, nextDataCol + 1).HorizontalAlignment = xlCenter
+                 End If
+            Next r
+        End If
+        .Columns(nextDataCol).ColumnWidth = 10
+        .Columns(nextDataCol + 1).ColumnWidth = 10
+        .Columns(nextDataCol).Hidden = False
+        .Columns(nextDataCol + 1).Hidden = False
+    End With
+
+    Call M_Calendar.DrawCalendar
+
+CleanUpAndExit:
+    Application.EnableEvents = True
+    Application.ScreenUpdating = True
+    If nextDataCol <> 0 Then
+        ShowMessage "タスク「" & taskName & "」を追加しました。"
+    End If
+    
+    Dim wsCal As Worksheet
+    Set wsCal = GetSheet(CALENDAR_SHEET_NAME)
+    If Not wsCal Is Nothing Then wsCal.Activate
 End Sub
 
-Public Function FindTaskRow(taskName As String, wsCalendar As Worksheet) As Long
-    Dim foundCell As Range
+Private Function ValidateTaskInput(taskName As String, 担当者 As String, 依頼日Str As String, 〆切日Str As String, 地整〆切日Str As String, wsCalendar As Worksheet) As Boolean
+    Dim msg As String
+    Dim tempDate1 As Date, tempDate2 As Date
+    Dim dataStartRowCal As Long
+    dataStartRowCal = CALENDAR_HEADER_ROWS + 1
+
+    ValidateTaskInput = False
 
     If wsCalendar Is Nothing Then
-        FindTaskRow = 0
+        ShowError "ValidateTaskInput: カレンダーシートが見つかりません。"
+        Exit Function
+    End If
+
+    If taskName = "" Then msg = msg & "・調査物名" & vbCrLf
+    If 担当者 = "" Then msg = msg & "・担当者名" & vbCrLf
+    If 依頼日Str = "" Then msg = msg & "・県_依頼日" & vbCrLf
+    If 〆切日Str = "" Then msg = msg & "・県_〆切日" & vbCrLf
+    If msg <> "" Then
+        ShowError "必須項目未入力：" & vbCrLf & msg
+        Exit Function
+    End If
+
+    If Not IsDate(依頼日Str) Then msg = msg & "・県_依頼日の形式不正。" & vbCrLf
+    If Not IsDate(〆切日Str) Then msg = msg & "・県_〆切日の形式不正。" & vbCrLf
+    If 地整〆切日Str <> "-" And 地整〆切日Str <> "" And Not IsDate(地整〆切日Str) Then
+        msg = msg & "・地整_〆切日の形式不正。" & vbCrLf
+    End If
+    If msg <> "" Then
+        ShowError msg
+        Exit Function
+    End If
+
+    tempDate1 = CDate(依頼日Str)
+    tempDate2 = CDate(〆切日Str)
+    If tempDate2 < tempDate1 Then
+        ShowError "県_〆切日は県_依頼日以降にしてください。"
+        Exit Function
+    End If
+
+    If FindTaskRow(taskName, wsCalendar) > 0 Then
+        ShowError "調査物名「" & taskName & "」は重複しています。"
         Exit Function
     End If
     
-    On Error Resume Next
-    Set foundCell = wsCalendar.Columns("C").Find(What:=taskName, LookIn:=xlValues, lookat:=xlWhole, MatchCase:=False)
-    On Error GoTo 0
-
-    If Not foundCell Is Nothing Then
-        FindTaskRow = foundCell.row
-    Else
-        FindTaskRow = 0
-    End If
+    ValidateTaskInput = True
 End Function
 
-Public Function FindTaskSubmissionColumns(taskName As String, wsSubmission As Worksheet) As Collection
-    Dim lastCol As Long
-    Dim c As Long
-    Dim cols As New Collection
-    Dim headerRowForTaskName As Long
-    Dim headerRowForHeaders As Long
-    Dim colLetter As String
 
-    Set FindTaskSubmissionColumns = Nothing
-
-    ' Validate inputs
-    If wsSubmission Is Nothing Then
-        Debug.Print "FindTaskSubmissionColumns: wsSubmission is Nothing"
-        Exit Function
-    End If
-
-    If Trim(taskName) = "" Then
-        Debug.Print "FindTaskSubmissionColumns: taskName is empty"
-        Exit Function
-    End If
-
-    ' テスト1タスクの特別処理 - I列とJ列をチェック
-    If StrComp(Trim(taskName), "テスト1", vbTextCompare) = 0 Then
-        Debug.Print "FindTaskSubmissionColumns: Special case for 'テスト1' - checking columns I and J"
-
-        headerRowForTaskName = MUNILIST_HEADER_ROW - 1
-        Dim colI As Long, colJ As Long
-        colI = Columns("I").Column
-        colJ = Columns("J").Column
-
-        ' I列に提出日、J列に提出状況があるか確認
-        If StrComp(Trim(CStr(wsSubmission.Cells(MUNILIST_HEADER_ROW, colI).Value)), "提出日", vbTextCompare) = 0 And _
-           StrComp(Trim(CStr(wsSubmission.Cells(MUNILIST_HEADER_ROW, colJ).Value)), "提出状況", vbTextCompare) = 0 Then
-
-            ' テスト1のタスク名をI列のヘッダーに設定
-            wsSubmission.Cells(headerRowForTaskName, colI).Value = "テスト1"
-            wsSubmission.Cells(headerRowForTaskName, colI).Font.Color = RGB(255, 255, 255)
-
-            cols.Add colI        ' Column for submission date (I列)
-            cols.Add colJ        ' Column for submission status (J列)
-            Set FindTaskSubmissionColumns = cols
-            Debug.Print "FindTaskSubmissionColumns: Found 'テスト1' at columns I,J"
-            Exit Function
-        End If
-    End If
-
-    headerRowForTaskName = MUNILIST_HEADER_ROW - 1
-
-    ' 提出状況管理シートの7行目（MUNILIST_HEADER_ROW - 1）にあるタスク名を検索
-    On Error Resume Next
-    lastCol = wsSubmission.Cells(headerRowForTaskName, wsSubmission.Columns.Count).End(xlToLeft).Column
-    If Err.Number <> 0 Then
-        Debug.Print "FindTaskSubmissionColumns: Error finding last column - " & Err.Description
-        Err.Clear
-        lastCol = 0
-    End If
-    On Error GoTo 0
-    Debug.Print "FindTaskSubmissionColumns: Searching for task '" & taskName & "', last column = " & lastCol
-    If lastCol < Columns("D").Column Then
-        Debug.Print "FindTaskSubmissionColumns: No task columns found (lastCol < Column D), creating first column"
-
-        ' 見つからない場合は新しい列を作成する
-        Dim firstCol As Long
-        firstCol = Columns("D").Column
-
-        ' タスク名を設定し、文字色を白に設定
-        wsSubmission.Cells(headerRowForTaskName, firstCol).Value = taskName
-        wsSubmission.Cells(headerRowForTaskName, firstCol).Font.Color = RGB(255, 255, 255)
-        wsSubmission.Cells(MUNILIST_HEADER_ROW, firstCol).Value = "提出日"
-        wsSubmission.Cells(MUNILIST_HEADER_ROW, firstCol + 1).Value = "提出状況"
-
-        ' Set column widths
-        wsSubmission.Columns(firstCol).ColumnWidth = 10
-        wsSubmission.Columns(firstCol + 1).ColumnWidth = 10
-
-        ' Set header formatting
-        wsSubmission.Cells(MUNILIST_HEADER_ROW, firstCol).HorizontalAlignment = xlCenter
-        wsSubmission.Cells(MUNILIST_HEADER_ROW, firstCol + 1).HorizontalAlignment = xlCenter
-        wsSubmission.Cells(MUNILIST_HEADER_ROW, firstCol).Font.Bold = True
-        wsSubmission.Cells(MUNILIST_HEADER_ROW, firstCol + 1).Font.Bold = True
-
-        ' Initialize municipalities
-        If gMuniListInitialized Then
-            Dim firstIdx As Long, firstRowPos As Long
-            firstRowPos = MUNILIST_HEADER_ROW + 1
-            For firstIdx = LBound(gMuniList) To UBound(gMuniList)
-                If firstRowPos > wsSubmission.Rows.Count Then Exit For
-                wsSubmission.Cells(firstRowPos, firstCol).NumberFormat = "m/d"
-                wsSubmission.Cells(firstRowPos, firstCol + 1).Value = "×"
-                wsSubmission.Cells(firstRowPos, firstCol + 1).HorizontalAlignment = xlCenter
-                firstRowPos = firstRowPos + 1
-            Next firstIdx
-        End If
-
-        cols.Add firstCol        ' Column for submission date
-        cols.Add firstCol + 1    ' Column for submission status
-        Set FindTaskSubmissionColumns = cols
-        Debug.Print "FindTaskSubmissionColumns: Created new columns at " & firstCol & "," & (firstCol+1) & " for task '" & taskName & "'"
-        Exit Function
-    End If
-
-    ' D列以降の列を2列ずつ検索（提出日と提出状況のペア）
-    For c = Columns("D").Column To lastCol Step 2
-        ' 列が表示されているか確認
-        If Not wsSubmission.Columns(c).Hidden Then
-            ' タスク名の比較
-            Dim cellTaskName As String, inputTaskName As String
-            cellTaskName = Trim(CStr(wsSubmission.Cells(headerRowForTaskName, c).Value))
-            inputTaskName = Trim(CStr(taskName))
-
-            Debug.Print "FindTaskSubmissionColumns: Column " & c & " - Comparing '" & cellTaskName & "' with '" & inputTaskName & "'"
-
-            ' 完全一致を確認
-            If StrComp(cellTaskName, inputTaskName, vbTextCompare) = 0 Then
-                Debug.Print "FindTaskSubmissionColumns: EXACT MATCH found for task '" & taskName & "' at column " & c
-                cols.Add c        ' Column for submission date
-                cols.Add c + 1    ' Column for submission status
-                Set FindTaskSubmissionColumns = cols
-                Exit Function
-            End If
-        End If
-    Next c
-
-    ' もう一度検索: 今度は非表示列も含めて検索（D列から）
-    For c = Columns("D").Column To lastCol Step 2
-        Dim cellTaskName2 As String, inputTaskName2 As String
-        cellTaskName2 = Trim(CStr(wsSubmission.Cells(headerRowForTaskName, c).Value))
-        inputTaskName2 = Trim(CStr(taskName))
-        
-        ' デバッグ情報
-        On Error Resume Next
-        colLetter = ColumnNumberToLetter(c)
-        If Err.Number <> 0 Then
-            Err.Clear
-            On Error GoTo 0
-            GoTo NextColumn2
-        End If
-        On Error GoTo 0
-        
-        Debug.Print "FindTaskSubmissionColumns: Second pass - Column " & colLetter & " (" & c & ") - Comparing '" & cellTaskName2 & "' with '" & inputTaskName2 & "'"
-
-        ' 完全一致を確認（ヘッダーは確認せず、タスク名のみ）
-        If StrComp(cellTaskName2, inputTaskName2, vbTextCompare) = 0 Then
-            Dim nextColLetter2 As String
-            nextColLetter2 = ColumnNumberToLetter(c + 1)
-            Debug.Print "FindTaskSubmissionColumns: Second pass - MATCH found for task '" & taskName & "' at columns " & colLetter & "," & nextColLetter2 & " (" & c & "," & (c + 1) & ")"
-            cols.Add c        ' Column for submission date
-            cols.Add c + 1    ' Column for submission status
-            Set FindTaskSubmissionColumns = cols
-            Exit Function
-        End If
-
-NextColumn2:
-    Next c
-
-    ' それでも見つからない場合は、新しい列を作成する
-    Debug.Print "FindTaskSubmissionColumns: No match found after complete search, creating new columns for task '" & taskName & "'"
-
-    ' 前回使用した列がある場合、その後ろに新しい列を作成
-    Dim newCol As Long
-
-    ' 使用されている最後の列を見つける
-    On Error Resume Next
-    newCol = wsSubmission.Cells(headerRowForTaskName, wsSubmission.Columns.Count).End(xlToLeft).Column
-    If Err.Number <> 0 Or newCol < Columns("D").Column Then
-        ' 最後の列が見つからない、または最低列（D列）より前の場合
-        Debug.Print "FindTaskSubmissionColumns: Using Column D as starting point for new columns"
-        newCol = Columns("D").Column - 2  ' D列の前に2を引いて、後で+2するとD列になる
-    End If
-    On Error GoTo 0
-
-    newCol = newCol + 2
-
-    If newCol > Columns("IV").Column Then
-        Debug.Print "FindTaskSubmissionColumns: No more space for columns (reached Excel limit)"
-        Exit Function
-    End If
-
-    ' タスク名を設定し、文字色を白に設定
-    colLetter = ColumnNumberToLetter(newCol)
-    Dim nextNewColLetter As String
-    nextNewColLetter = ColumnNumberToLetter(newCol + 1)
-    Debug.Print "FindTaskSubmissionColumns: Creating new columns at " & colLetter & "," & nextNewColLetter & " (" & newCol & "," & (newCol+1) & ") for task '" & taskName & "'"
-
-    GoTo CreateNewColumns
-
-CreateFirstColumn:
-    ' 最初の列（D列）から作成する場合
-    newCol = Columns("D").Column
-    colLetter = "D"
-    nextNewColLetter = "E"
-    Debug.Print "FindTaskSubmissionColumns: Creating first columns at " & colLetter & "," & nextNewColLetter & " (" & newCol & "," & (newCol+1) & ") for task '" & taskName & "'"
-
-CreateNewColumns:
-    ' タスク名を設定し、文字色を白に設定
-    wsSubmission.Cells(headerRowForTaskName, newCol).Value = taskName
-    wsSubmission.Cells(headerRowForTaskName, newCol).Font.Color = RGB(255, 255, 255)
-    wsSubmission.Cells(MUNILIST_HEADER_ROW, newCol).Value = "提出日"
-    wsSubmission.Cells(MUNILIST_HEADER_ROW, newCol + 1).Value = "提出状況"
-
-    ' Set column widths
-    wsSubmission.Columns(newCol).ColumnWidth = 10
-    wsSubmission.Columns(newCol + 1).ColumnWidth = 10
-
-    ' Set header formatting
-    wsSubmission.Cells(MUNILIST_HEADER_ROW, newCol).HorizontalAlignment = xlCenter
-    wsSubmission.Cells(MUNILIST_HEADER_ROW, newCol + 1).HorizontalAlignment = xlCenter
-    wsSubmission.Cells(MUNILIST_HEADER_ROW, newCol).Font.Bold = True
-    wsSubmission.Cells(MUNILIST_HEADER_ROW, newCol + 1).Font.Bold = True
-
-    ' Initialize municipalities
-    If gMuniListInitialized Then
-        Dim rowIndex As Long, newMuniRow As Long
-        newMuniRow = MUNILIST_HEADER_ROW + 1
-        For rowIndex = LBound(gMuniList) To UBound(gMuniList)
-            If newMuniRow > wsSubmission.Rows.Count Then Exit For
-            wsSubmission.Cells(newMuniRow, newCol).NumberFormat = "m/d"
-            wsSubmission.Cells(newMuniRow, newCol + 1).Value = "×"
-            wsSubmission.Cells(newMuniRow, newCol + 1).HorizontalAlignment = xlCenter
-            newMuniRow = newMuniRow + 1
-        Next rowIndex
-    End If
-
-    cols.Add newCol        ' Column for submission date
-    cols.Add newCol + 1    ' Column for submission status
-    Set FindTaskSubmissionColumns = cols
-    Debug.Print "FindTaskSubmissionColumns: Created new columns at " & colLetter & "," & nextNewColLetter & " (" & newCol & "," & (newCol+1) & ") for task '" & taskName & "'"
-End Function
-
-Public Sub SetDefaultFont(sht As Worksheet)
-    On Error Resume Next
-    sht.Cells.Font.Name = DEFAULT_FONT_NAME
-    If Err.Number <> 0 Then
-        Debug.Print "Warning: Font '" & DEFAULT_FONT_NAME & "' not found on this system. Using default font."
-        Err.Clear
-    End If
-    On Error GoTo 0
-End Sub
-
-Public Function CreateButton(sht As Worksheet, targetCell As Range, _
-                             buttonText As String, macroName As String, _
-                             Optional buttonWidth As Double = -1, Optional buttonHeight As Double = -1, _
-                             Optional fontSize As Single = 10, Optional ByVal newButtonName As String = "") As Button
-    Dim btn As Button
-    Dim effWidth As Double, effHeight As Double
-    Dim actualTargetCell As Range
-
-    If sht Is Nothing Or targetCell Is Nothing Then
-        Debug.Print "CreateButton: Invalid arguments (sht or targetCell is Nothing)."
-        Set CreateButton = Nothing
-        Exit Function
-    End If
-
-    Set actualTargetCell = targetCell.Cells(1, 1)
-
-    If buttonWidth = -1 Then effWidth = actualTargetCell.Width Else effWidth = buttonWidth
-    If buttonHeight = -1 Then effHeight = actualTargetCell.Height Else effHeight = buttonHeight
-
-    ' 制限を調整して指定された高さが優先されるようにする
-    If effWidth > actualTargetCell.Width Then effWidth = actualTargetCell.Width
-    If effWidth < 10 Then effWidth = 10
-    ' 高さの制限を緩和 - ボタンが複数行にまたがる場合に有効
-    If effHeight < 5 Then effHeight = 5
-
-    On Error Resume Next
-    Set btn = sht.Buttons.Add(actualTargetCell.left, actualTargetCell.top, effWidth, effHeight)
-    If btn Is Nothing Then
-        Debug.Print "CreateButton: ボタンの作成に失敗しました。Sheet: " & sht.Name & ", Cell: " & actualTargetCell.Address & ", Error: " & Err.Description
-        Set CreateButton = Nothing
-        Exit Function
-    End If
-    On Error GoTo 0
-
-    With btn
-        .Caption = buttonText
-        .OnAction = "'" & ThisWorkbook.Name & "'!" & macroName
-        ' フォントを明示的に指定し、適用する
-        On Error Resume Next
-        .Font.Name = DEFAULT_FONT_NAME
-        If Err.Number <> 0 Then
-            Debug.Print "Warning: Font '" & DEFAULT_FONT_NAME & "' not available for button. Using default."
-            Err.Clear
-        End If
-        On Error GoTo 0
-        .Font.Size = fontSize
-        .Placement = xlMoveAndSize
-        
-        If newButtonName <> "" Then
-            On Error Resume Next
-            .Name = newButtonName
-            If Err.Number <> 0 Then
-                 .Name = newButtonName & "_" & Format(Timer, "00000.000")
-                 Debug.Print "Warning: Button name '" & newButtonName & "' was already in use. Renamed to '" & .Name & "'"
-                 Err.Clear
-            End If
-            On Error GoTo 0
-        End If
-    End With
-    Set CreateButton = btn
-End Function
-
-Public Function GetLastDataRow(ws As Worksheet, col As Variant) As Long
-    If ws Is Nothing Then
-        GetLastDataRow = 0
-        Exit Function
-    End If
-    On Error Resume Next
-    GetLastDataRow = ws.Cells(Rows.Count, col).End(xlUp).row
-    If Err.Number <> 0 Or GetLastDataRow = 0 Then
-        Err.Clear
-        GetLastDataRow = 0
-        If ws.Cells(Rows.Count, col).End(xlUp).row = 1 And ws.Cells(1, col).Value = "" Then
-            GetLastDataRow = 0
-        Else
-            GetLastDataRow = ws.Cells(Rows.Count, col).End(xlUp).row
-        End If
-    End If
-    On Error GoTo 0
-End Function
-
-Public Sub ShowMessage(msg As String, Optional title As String = "情報")
-    MsgBox msg, vbInformation, title
-End Sub
-
-Public Sub ShowError(msg As String, Optional title As String = "エラー")
-    MsgBox msg, vbCritical, title
-End Sub
-
-Public Function ColumnNumberToLetter(columnNumber As Long) As String
-   Dim columnName As String
-   Dim dividend As Long
-   Dim modulo As Long
-
-   If columnNumber <= 0 Then
-       ColumnNumberToLetter = "Err"
-       Exit Function
-   End If
-
-   dividend = columnNumber
-   columnName = vbNullString
-
-   Do While dividend > 0
-       modulo = (dividend - 1) Mod 26
-       columnName = Chr(65 + modulo) & columnName
-       dividend = Int((dividend - modulo) / 26)
-   Loop
-   ColumnNumberToLetter = columnName
-End Function
-
-' 特定の名前のボタンを削除する関数
-Public Sub DeleteButton(sht As Worksheet, buttonName As String)
-    Dim shp As Shape
-    Dim btn As Button
-
-    On Error Resume Next
-    ' Shapesコレクションから検索
-    For Each shp In sht.Shapes
-        If shp.Type = msoFormControl And shp.FormControlType = xlButtonControl Then
-            If shp.Name = buttonName Then
-                shp.Delete
-                Exit For
-            End If
-        End If
-    Next shp
-
-    ' Buttonsコレクションからも検索
-    For Each btn In sht.Buttons
-        If btn.Name = buttonName Then
-            btn.Delete
-            Exit For
-        End If
-    Next btn
-    On Error GoTo 0
-End Sub
-
-' 特定の座標位置にボタンを作成する関数
-Public Function CreateButtonAtPosition(sht As Worksheet, left As Double, top As Double, _
-                             buttonText As String, macroName As String, _
-                             buttonWidth As Double, buttonHeight As Double, _
-                             Optional fontSize As Single = 10, Optional ByVal newButtonName As String = "") As Button
-    Dim btn As Button
-
-    If sht Is Nothing Then
-        Debug.Print "CreateButtonAtPosition: Invalid argument (sht is Nothing)."
-        Set CreateButtonAtPosition = Nothing
-        Exit Function
-    End If
-
-    On Error Resume Next
-    Set btn = sht.Buttons.Add(left, top, buttonWidth, buttonHeight)
-    If btn Is Nothing Then
-        Debug.Print "CreateButtonAtPosition: ボタンの作成に失敗しました。Sheet: " & sht.Name & ", Error: " & Err.Description
-        Set CreateButtonAtPosition = Nothing
-        Exit Function
-    End If
-    On Error GoTo 0
-
-    With btn
-        .Caption = buttonText
-        .OnAction = "'" & ThisWorkbook.Name & "'!" & macroName
-        ' フォントを明示的に指定し、適用する
-        On Error Resume Next
-        .Font.Name = DEFAULT_FONT_NAME
-        If Err.Number <> 0 Then
-            Debug.Print "Warning: Font '" & DEFAULT_FONT_NAME & "' not available for button. Using default."
-            Err.Clear
-        End If
-        On Error GoTo 0
-        .Font.Size = fontSize
-        .Placement = xlFreeFloating  ' 位置固定
-
-        If newButtonName <> "" Then
-            On Error Resume Next
-            .Name = newButtonName
-            If Err.Number <> 0 Then
-                 .Name = newButtonName & "_" & Format(Timer, "00000.000")
-                 Debug.Print "Warning: Button name '" & newButtonName & "' was already in use. Renamed to '" & .Name & "'"
-                 Err.Clear
-            End If
-            On Error GoTo 0
-        End If
-    End With
-    Set CreateButtonAtPosition = btn
-End Function
-
-' REM REMOVED: IsArrayAllocated 関数は削除
-' Public Function IsArrayAllocated(arr As Variant) As Boolean
-'    On Error Resume Next
-'    IsArrayAllocated = (LBound(arr) <= UBound(arr))
-'    If Err.Number <> 0 Then IsArrayAllocated = False
-'    On Error GoTo 0
-' End Function

@@ -138,10 +138,9 @@ Private Function SetupCalendarSheet(isNewSheet As Boolean) As Worksheet
     Dim headerDataRow As Long
     Dim refreshButtonCell As Range
     Dim shp As Shape
-    Dim updateButtonHeight As Double ' 宣言を上部に移動
-
+    
     headerDataRow = CALENDAR_HEADER_ROWS + 1
-
+    
     On Error Resume Next
     Set ws = ThisWorkbook.Sheets(CALENDAR_SHEET_NAME)
     If ws Is Nothing Then
@@ -149,9 +148,9 @@ Private Function SetupCalendarSheet(isNewSheet As Boolean) As Worksheet
         ws.Name = CALENDAR_SHEET_NAME
     End If
     On Error GoTo 0
-
+    
     If ws Is Nothing Then Exit Function
-
+    
     If isNewSheet Then
         With ws
             .Cells.Clear
@@ -183,7 +182,7 @@ Private Function SetupCalendarSheet(isNewSheet As Boolean) As Worksheet
                 .Cells(1, "G").Value = "地整_〆切日"
                 .Cells(1, "H").Value = "提出状況"
             End With
-
+            
             With .Range(.Cells(1, GANTT_START_COL_LETTER), .Cells(CALENDAR_HEADER_ROWS, "IV"))
                 .HorizontalAlignment = xlCenter
                 .VerticalAlignment = xlCenter
@@ -192,17 +191,11 @@ Private Function SetupCalendarSheet(isNewSheet As Boolean) As Worksheet
             For i = 1 To CALENDAR_HEADER_ROWS
                 .Rows(i).RowHeight = 18
             Next i
-
-            ' 更新ボタンの設定
-            ' 明示的に1行目と2行目を範囲として指定
-            Set refreshButtonCell = .Range(.Cells(1, "I"), .Cells(2, "I"))
-            ' セルを結合
-            refreshButtonCell.Merge
+            
+            Set refreshButtonCell = .Range("I1:I" & CALENDAR_HEADER_ROWS)
             refreshButtonCell.VerticalAlignment = xlCenter
             refreshButtonCell.HorizontalAlignment = xlCenter
-            ' ボタンの高さを2行分に設定
-            updateButtonHeight = .Rows(1).Height + .Rows(2).Height
-            Call CreateButton(ws, refreshButtonCell, "更新", "M_Calendar.RefreshCalendar_Click", , updateButtonHeight)
+            Call CreateButton(ws, refreshButtonCell, "更新", "M_Calendar.RefreshCalendar_Click")
         End With
     Else
         Call SetDefaultFont(ws)
@@ -217,32 +210,11 @@ Private Function SetupCalendarSheet(isNewSheet As Boolean) As Worksheet
             End If
         Next shp
         If Not refreshBtnExists Then
-            ' 更新ボタンの設定
-            ' 明示的に1行目と2行目を範囲として指定
-            Set refreshButtonCell = ws.Range(ws.Cells(1, "I"), ws.Cells(2, "I"))
-            ' セルを結合
-            refreshButtonCell.Merge
+            Set refreshButtonCell = ws.Range("I1:I" & CALENDAR_HEADER_ROWS)
             refreshButtonCell.VerticalAlignment = xlCenter
             refreshButtonCell.HorizontalAlignment = xlCenter
-            ' ボタンの高さを2行分に設定
-            updateButtonHeight = ws.Rows(1).Height + ws.Rows(2).Height
-            Call CreateButton(ws, refreshButtonCell, "更新", "M_Calendar.RefreshCalendar_Click", , updateButtonHeight)
+            Call CreateButton(ws, refreshButtonCell, "更新", "M_Calendar.RefreshCalendar_Click")
         End If
-
-        ' Ensure header labels are present
-        With ws.Rows(headerDataRow - 1)
-            If Trim(.Cells(1, "A").Value) = "" Then .Cells(1, "A").Value = "削除"
-            If Trim(.Cells(1, "B").Value) = "" Then .Cells(1, "B").Value = "リマインド"
-            If Trim(.Cells(1, "C").Value) = "" Then .Cells(1, "C").Value = "調査物名"
-            If Trim(.Cells(1, "D").Value) = "" Then .Cells(1, "D").Value = "担当者名"
-            If Trim(.Cells(1, "E").Value) = "" Then .Cells(1, "E").Value = "県_依頼日"
-            If Trim(.Cells(1, "F").Value) = "" Then .Cells(1, "F").Value = "県_〆切日"
-            If Trim(.Cells(1, "G").Value) = "" Then .Cells(1, "G").Value = "地整_〆切日"
-            If Trim(.Cells(1, "H").Value) = "" Then .Cells(1, "H").Value = "提出状況"
-            .Font.Bold = True
-            .HorizontalAlignment = xlCenter
-            .VerticalAlignment = xlCenter
-        End With
     End If
     Set SetupCalendarSheet = ws
 End Function
@@ -290,31 +262,6 @@ Private Function SetupTaskAddSheet(isNewSheet As Boolean) As Worksheet
         End With
     Else
         Call SetDefaultFont(ws)
-        ' Ensure all headers and labels are present even in existing sheet
-        With ws
-            If Trim(.Cells(1, "A").Value) = "" Then .Cells(1, "A").Value = "項目"
-            If Trim(.Cells(1, "B").Value) = "" Then .Cells(1, "B").Value = "入力"
-            If Trim(.Cells(1, "C").Value) = "" Then .Cells(1, "C").Value = "参考 / 形式"
-            .Rows(1).Font.Bold = True
-
-            If Trim(.Cells(2, "A").Value) = "" Then .Cells(2, "A").Value = "調査物名"
-            If Trim(.Cells(3, "A").Value) = "" Then .Cells(3, "A").Value = "担当者名"
-            If Trim(.Cells(4, "A").Value) = "" Then .Cells(4, "A").Value = "県_依頼日"
-            If Trim(.Cells(5, "A").Value) = "" Then .Cells(5, "A").Value = "県_〆切日"
-            If Trim(.Cells(6, "A").Value) = "" Then .Cells(6, "A").Value = "地整_〆切日"
-
-            If Trim(.Cells(4, "C").Value) = "" Then .Cells(4, "C").Value = "(例: m/d)"
-            If Trim(.Cells(5, "C").Value) = "" Then .Cells(5, "C").Value = "(例: m/d)"
-            If Trim(.Cells(6, "C").Value) = "" Then .Cells(6, "C").Value = "(例: m/d または -)"
-
-            For i = 2 To 6
-                If .Cells(i, "B").Borders(xlEdgeBottom).LineStyle = xlNone Then
-                    .Cells(i, "B").Borders(xlEdgeBottom).LineStyle = xlContinuous
-                    .Cells(i, "B").Borders(xlEdgeBottom).Weight = xlThin
-                End If
-            Next i
-        End With
-
         addTaskBtnExists = False
         For Each shp In ws.Shapes
              If shp.Type = msoFormControl And shp.FormControlType = xlButtonControl Then
@@ -360,29 +307,22 @@ Private Function SetupSubmissionSheet(isNewSheet As Boolean) As Worksheet
             .Cells(3, "B").Value = "調査物名:"
             .Cells(4, "B").Value = "県_〆切日:"
             .Cells(5, "B").Value = "提出状況 (%):"
-            .Cells(6, "B").Value = "未提出市町村:" ' 7行目から6行目に変更
-            With .Range(.Cells(3, "C"), .Cells(3, "D"))
-                .Merge
-                .HorizontalAlignment = xlLeft
-            End With
-             With .Range(.Cells(4, "C"), .Cells(4, "D"))
-                .Merge
-                .HorizontalAlignment = xlLeft
-            End With
-             With .Range(.Cells(5, "C"), .Cells(5, "D"))
-                .Merge
-                .HorizontalAlignment = xlLeft
-            End With
-            ' 結合せずに単一のセルで表示
-            .Cells(6, "C").WrapText = True
-            .Cells(6, "C").VerticalAlignment = xlTop
-            .Rows(6).RowHeight = 40
+            .Cells(7, "B").Value = "未提出市町村:"
+            
+            ' 各セルの初期化（結合しない）
+            .Cells(3, "C").Value = ""
+            .Cells(4, "C").Value = ""
+            .Cells(5, "C").Value = ""
+            .Cells(7, "C").Value = ""
+            
+            ' 未提出市町村のセル設定
+            .Cells(7, "C").WrapText = True
+            .Cells(7, "C").VerticalAlignment = xlTop
+            .Rows(7).RowHeight = 40
 
-            Set btnShowAllTasks = CreateButton(ws, .Range(.Cells(3, "E"), .Cells(3, "F")), "全タスク", "M_Submission.ShowAllTasksInSubmission_Click", .Columns("E").Width + .Columns("F").Width, , , BTN_NAME_SUBMISSION_SHOW_ALL_TASKS)
-            Set btnAllMuni = CreateButton(ws, .Cells(5, "E"), "全市町村（朝飯鮭）", "M_Submission.FilterAllMunicipalities_Click", .Columns("E").Width, , , BTN_NAME_FILTER_ALL)
-            Set btnSpecificMuni = CreateButton(ws, .Cells(5, "F"), "市町村", "M_Submission.FilterSpecificMunicipalities_Click", .Columns("F").Width, , , BTN_NAME_FILTER_SPECIFIC)
-            ' 更新ボタンも追加
-            CreateButton ws, .Range(.Cells(3, "G"), .Cells(3, "G")), "更新", "M_Submission.RefreshSubmissionStatus_Click", .Columns("G").Width
+            Set btnShowAllTasks = CreateButton(ws, .Range("E3"), "全タスク", "M_Submission.ShowAllTasksInSubmission_Click", .Columns("E").Width, , , BTN_NAME_SUBMISSION_SHOW_ALL_TASKS)
+            Set btnAllMuni = CreateButton(ws, .Cells(5, "E"), "全市町村", "M_Submission.FilterAllMunicipalities_Click", .Columns("E").Width, , , BTN_NAME_FILTER_ALL)
+            Set btnSpecificMuni = CreateButton(ws, .Cells(5, "F"), "未提出のみ", "M_Submission.FilterSpecificMunicipalities_Click", .Columns("F").Width, , , BTN_NAME_FILTER_SPECIFIC)
 
             With .Rows(MUNILIST_HEADER_ROW)
                 .Font.Bold = True
@@ -396,24 +336,12 @@ Private Function SetupSubmissionSheet(isNewSheet As Boolean) As Worksheet
             muniRow = MUNILIST_HEADER_ROW + 1
             If gMuniListInitialized Then ' REM MODIFIED: フラグ確認
                 For i = LBound(gMuniList) To UBound(gMuniList)
-                    ' Always ensure municipality codes and names are set correctly
                     .Cells(muniRow, "B").Value = gMuniList(i).Code
                     .Cells(muniRow, "C").Value = gMuniList(i).Name
-                    .Cells(muniRow, "B").Font.Bold = False
-                    .Cells(muniRow, "C").Font.Bold = False
-
-                    ' Format the submission date and status cells
                     .Cells(muniRow, "D").NumberFormat = "m/d"
                     .Cells(muniRow, "E").HorizontalAlignment = xlCenter
                     .Cells(muniRow, "E").Value = "×"
-
-                    ' Set row visibility based on FilterOut setting
-                    If gMuniList(i).FilterOut Then
-                        .Rows(muniRow).Hidden = True
-                    Else
-                        .Rows(muniRow).Hidden = False
-                    End If
-
+                    If gMuniList(i).FilterOut Then .Rows(muniRow).Hidden = True
                     muniRow = muniRow + 1
                 Next i
             End If
@@ -423,36 +351,14 @@ Private Function SetupSubmissionSheet(isNewSheet As Boolean) As Worksheet
         End With
     Else
         Call SetDefaultFont(ws)
-
-        ' Ensure labels are present in B3-B7
-        If Trim(ws.Cells(3, "B").Value) = "" Then ws.Cells(3, "B").Value = "調査物名:"
-        If Trim(ws.Cells(4, "B").Value) = "" Then ws.Cells(4, "B").Value = "県_〆切日:"
-        If Trim(ws.Cells(5, "B").Value) = "" Then ws.Cells(5, "B").Value = "提出状況 (%):"
-
-        ' Ensure range merges are correct
+        
+        ' 既存のセル結合を解除（念のため）
         On Error Resume Next
-        If Not ws.Range(ws.Cells(3, "C"), ws.Cells(3, "D")).MergeCells Then
-            ws.Range(ws.Cells(3, "C"), ws.Cells(3, "D")).Merge
-            ws.Range(ws.Cells(3, "C"), ws.Cells(3, "D")).HorizontalAlignment = xlLeft
-        End If
-
-        If Not ws.Range(ws.Cells(4, "C"), ws.Cells(4, "D")).MergeCells Then
-            ws.Range(ws.Cells(4, "C"), ws.Cells(4, "D")).Merge
-            ws.Range(ws.Cells(4, "C"), ws.Cells(4, "D")).HorizontalAlignment = xlLeft
-        End If
-
-        If Not ws.Range(ws.Cells(5, "C"), ws.Cells(5, "D")).MergeCells Then
-            ws.Range(ws.Cells(5, "C"), ws.Cells(5, "D")).Merge
-            ws.Range(ws.Cells(5, "C"), ws.Cells(5, "D")).HorizontalAlignment = xlLeft
-        End If
-
-        If Not ws.Range(ws.Cells(7, "C"), ws.Cells(7, "E")).MergeCells Then
-            ws.Range(ws.Cells(7, "C"), ws.Cells(7, "E")).Merge
-            ws.Range(ws.Cells(7, "C"), ws.Cells(7, "E")).WrapText = True
-            ws.Range(ws.Cells(7, "C"), ws.Cells(7, "E")).VerticalAlignment = xlTop
+        If ws.Range("C7:E7").MergeCells Then
+            ws.Range("C7:E7").UnMerge
         End If
         On Error GoTo 0
-
+        
         For i = LBound(btnExists) To UBound(btnExists): btnExists(i) = False: Next i
         For Each shp In ws.Shapes
             If shp.Type = msoFormControl And shp.FormControlType = xlButtonControl Then
@@ -461,7 +367,7 @@ Private Function SetupSubmissionSheet(isNewSheet As Boolean) As Worksheet
                 If shp.Name = BTN_NAME_FILTER_SPECIFIC Then btnExists(3) = True
             End If
         Next shp
-        If Not btnExists(1) Then CreateButton ws, ws.Range(ws.Cells(3, "E"), ws.Cells(3, "F")), "全タスク", "M_Submission.ShowAllTasksInSubmission_Click", ws.Columns("E").Width + ws.Columns("F").Width, , , BTN_NAME_SUBMISSION_SHOW_ALL_TASKS
+        If Not btnExists(1) Then CreateButton ws, ws.Range("E3"), "全タスク", "M_Submission.ShowAllTasksInSubmission_Click", ws.Columns("E").Width, , , BTN_NAME_SUBMISSION_SHOW_ALL_TASKS
         If Not btnExists(2) Then CreateButton ws, ws.Cells(5, "E"), "全市町村", "M_Submission.FilterAllMunicipalities_Click", ws.Columns("E").Width, , , BTN_NAME_FILTER_ALL
         If Not btnExists(3) Then CreateButton ws, ws.Cells(5, "F"), "未提出のみ", "M_Submission.FilterSpecificMunicipalities_Click", ws.Columns("F").Width, , , BTN_NAME_FILTER_SPECIFIC
         
@@ -481,30 +387,17 @@ Private Function SetupSubmissionSheet(isNewSheet As Boolean) As Worksheet
         
         muniRow = MUNILIST_HEADER_ROW + 1
         If gMuniListInitialized Then ' REM MODIFIED: フラグ確認
-            ' Always ensure municipality codes and names are set correctly
             For i = LBound(gMuniList) To UBound(gMuniList)
                 If muniRow > Rows.Count Then Exit For 'シートの最大行を超えないように
-                ' Only update if cells are empty or different from gMuniList values
-                If Trim(CStr(ws.Cells(muniRow, "B").Value)) <> gMuniList(i).Code Or _
-                   Trim(CStr(ws.Cells(muniRow, "C").Value)) <> gMuniList(i).Name Then
-                    ws.Cells(muniRow, "B").Value = gMuniList(i).Code
-                    ws.Cells(muniRow, "C").Value = gMuniList(i).Name
-                End If
-
-                ' Set row visibility based on FilterOut setting
-                If gMuniList(i).FilterOut Then
-                    ws.Rows(muniRow).Hidden = True
-                Else
-                    ws.Rows(muniRow).Hidden = False
-                End If
-
+                ws.Cells(muniRow, "B").Value = gMuniList(i).Code
+                ws.Cells(muniRow, "C").Value = gMuniList(i).Name
+                If gMuniList(i).FilterOut Then ws.Rows(muniRow).Hidden = True Else ws.Rows(muniRow).Hidden = False
                 muniRow = muniRow + 1
             Next i
-
-            ' If there are more rows in the sheet than in the gMuniList array, clear the excess
+            ' gMuniListの数より現在の市町村リスト行が少ない場合、余分な行をクリア（手動削除された場合など）
             If currentLastRowB >= muniRow And currentLastRowB > MUNILIST_HEADER_ROW Then
                 ws.Range("B" & muniRow & ":C" & currentLastRowB).clearContents
-                ws.Range("B" & muniRow & ":C" & currentLastRowB).EntireRow.Hidden = False
+                ws.Range("B" & muniRow & ":C" & currentLastRowB).EntireRow.Hidden = False '非表示も解除
             End If
         End If
         With ws.Rows(MUNILIST_HEADER_ROW)
@@ -512,15 +405,9 @@ Private Function SetupSubmissionSheet(isNewSheet As Boolean) As Worksheet
             If .Cells(1, "C").Value = "" Then .Cells(1, "C").Value = "市町村名"
             If .Cells(1, "D").Value = "" Then .Cells(1, "D").Value = "提出日"
             If .Cells(1, "E").Value = "" Then .Cells(1, "E").Value = "提出状況"
-            .Font.Bold = True
-            .Cells(1, "B").HorizontalAlignment = xlCenter
-            .Cells(1, "C").HorizontalAlignment = xlCenter
             .Cells(1, "D").HorizontalAlignment = xlCenter
             .Cells(1, "E").HorizontalAlignment = xlCenter
         End With
-
-        ' 行の高さを適切に設定
-        ws.Rows(7).RowHeight = 40
     End If
     Set SetupSubmissionSheet = ws
 End Function

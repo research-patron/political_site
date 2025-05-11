@@ -83,15 +83,7 @@ Public Sub AddTask_Click()
     End If
 
     With wsSubmission
-        ' Clear any existing content in these columns to ensure clean setup
-        .Columns(nextDataCol).Clear
-        .Columns(nextDataCol + 1).Clear
-
-        ' Set task name in the header
         .Cells(headerRowForTaskName, nextDataCol).Value = taskName
-        .Cells(headerRowForTaskName, nextDataCol).Font.Bold = True
-
-        ' Set column headers
         .Cells(MUNILIST_HEADER_ROW, nextDataCol).Value = "提出日"
         .Cells(MUNILIST_HEADER_ROW, nextDataCol + 1).Value = "提出状況"
         With .Range(.Cells(MUNILIST_HEADER_ROW, nextDataCol), .Cells(MUNILIST_HEADER_ROW, nextDataCol + 1))
@@ -99,28 +91,22 @@ Public Sub AddTask_Click()
             .Font.Bold = True
         End With
 
-        ' Calculate the last row of municipality list
         Dim muniListLastRow As Long
         muniListLastRow = GetLastDataRow(wsSubmission, "B")
-        If muniListLastRow < MUNILIST_HEADER_ROW + 1 And gMuniListInitialized Then
+        If muniListLastRow < MUNILIST_HEADER_ROW + 1 And gMuniListInitialized Then ' REM MODIFIED: フラグ確認
              muniListLastRow = MUNILIST_HEADER_ROW + UBound(gMuniList) - LBound(gMuniList)
         End If
 
-        ' Initialize submission status cells for each municipality
         If muniListLastRow >= MUNILIST_HEADER_ROW + 1 Then
             Dim r As Long
             For r = MUNILIST_HEADER_ROW + 1 To muniListLastRow
-                ' Only add data for rows that have municipality data
-                If Trim(CStr(.Cells(r, "B").Value)) <> "" Or Trim(CStr(.Cells(r, "C").Value)) <> "" Then
+                 If Trim(CStr(wsSubmission.Cells(r, "B").Value)) <> "" Or Trim(CStr(wsSubmission.Cells(r, "C").Value)) <> "" Then
                     .Cells(r, nextDataCol).NumberFormat = "m/d"
-                    .Cells(r, nextDataCol).clearContents    ' Ensure it's empty
-                    .Cells(r, nextDataCol + 1).Value = "×"  ' Default to not submitted
+                    .Cells(r, nextDataCol + 1).Value = "×"
                     .Cells(r, nextDataCol + 1).HorizontalAlignment = xlCenter
-                End If
+                 End If
             Next r
         End If
-
-        ' Format the columns
         .Columns(nextDataCol).ColumnWidth = 10
         .Columns(nextDataCol + 1).ColumnWidth = 10
         .Columns(nextDataCol).Hidden = False
@@ -187,3 +173,5 @@ Private Function ValidateTaskInput(taskName As String, 担当者 As String, 依�
     
     ValidateTaskInput = True
 End Function
+
+
