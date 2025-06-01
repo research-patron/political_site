@@ -62,6 +62,17 @@ const Settings = () => {
     'TOEIC': ['990', '900', '800', '700', '600', '500'],
   };
 
+  // 英検のTOEFL換算表（一般的な換算値）
+  const eikenToToeflConversion = {
+    '1級': 107,    // 95-120点の平均
+    '準1級': 80,   // 70-90点の平均
+    '2級': 56,     // 42-71点の平均
+    '準2級': 35,   // 45点未満
+    '3級': 25,     // TOEFL測定不可レベル（推定）
+    '4級': 20,     // TOEFL測定不可レベル（推定）
+    '5級': 15      // TOEFL測定不可レベル（推定）
+  };
+
   useEffect(() => {
     if (userProfile && currentUser) {
       setFormData({

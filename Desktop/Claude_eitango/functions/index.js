@@ -106,21 +106,41 @@ exports.generateQuestions = functions.region('asia-northeast1').runWith({
       // 資格とレベルに基づいて難易度と文の複雑さを決定
       let examContext = '';
       let sentenceComplexity = '';
+      let toeflEquivalent = '';
+      
+      // 英検のTOEFL換算表
+      const eikenToToeflConversion = {
+        '1級': 107,    // 95-120点の平均
+        '準1級': 80,   // 70-90点の平均
+        '2級': 56,     // 42-71点の平均
+        '準2級': 35,   // 45点未満
+        '3級': 25,     // TOEFL測定不可レベル（推定）
+        '4級': 20,     // TOEFL測定不可レベル（推定）
+        '5級': 15      // TOEFL測定不可レベル（推定）
+      };
       
       if (targetExam && targetLevel) {
         if (targetExam === '英検') {
-          const levelMap = {
-            '5級': { context: '中学初級レベル', complexity: 'とても簡単で短い文' },
-            '4級': { context: '中学中級レベル', complexity: '簡単で基本的な文' },
-            '3級': { context: '中学卒業レベル', complexity: '日常的でシンプルな文' },
-            '準2級': { context: '高校中級レベル', complexity: '少し複雑な文構造' },
-            '2級': { context: '高校卒業レベル', complexity: '複雑な文構造と語彙' },
-            '準1級': { context: '大学中級レベル', complexity: '高度な文構造と専門的な語彙' },
-            '1級': { context: '大学上級レベル', complexity: '非常に高度で専門的な文' }
-          };
-          const level = levelMap[targetLevel] || levelMap['3級'];
-          examContext = level.context;
-          sentenceComplexity = level.complexity;
+          // 英検をTOEFL換算して処理
+          const toeflScore = eikenToToeflConversion[targetLevel] || 25;
+          toeflEquivalent = `TOEFL ${toeflScore}点相当`;
+          
+          if (toeflScore >= 95) {
+            examContext = '大学院レベルの学術英語';
+            sentenceComplexity = 'アカデミックで複雑な文構造、専門用語を含む';
+          } else if (toeflScore >= 70) {
+            examContext = '大学レベルの学術英語';
+            sentenceComplexity = '学術的な文章、論理的な構造';
+          } else if (toeflScore >= 42) {
+            examContext = '高校上級〜大学初級レベル';
+            sentenceComplexity = '準学術的な文章、やや複雑な構造';
+          } else if (toeflScore >= 25) {
+            examContext = '高校中級レベル';
+            sentenceComplexity = '標準的な文章、基本的な学術語彙';
+          } else {
+            examContext = '中学〜高校初級レベル';
+            sentenceComplexity = 'とても簡単で短い文、基本語彙';
+          }
         } else if (targetExam === 'TOEFL') {
           const score = parseInt(targetLevel);
           if (score >= 100) {
@@ -162,7 +182,7 @@ exports.generateQuestions = functions.region('asia-northeast1').runWith({
 
 対象単語: ${word.english}${word.japanese ? ` (${word.japanese})` : ''}
 品詞: ${word.partOfSpeech || '未分類'}
-${examContext ? `試験レベル: ${targetExam} ${targetLevel} (${examContext})` : `難易度: ${difficulty === 'easy' ? '初級' : difficulty === 'hard' ? '上級' : '中級'}`}
+${examContext ? `試験レベル: ${targetExam === '英検' ? `${targetExam} ${targetLevel} (${toeflEquivalent}, ${examContext})` : `${targetExam} ${targetLevel} (${examContext})`}` : `難易度: ${difficulty === 'easy' ? '初級' : difficulty === 'hard' ? '上級' : '中級'}`}
 ${sentenceComplexity ? `文の複雑さ: ${sentenceComplexity}` : ''}
 
 以下の形式で回答してください：
@@ -175,10 +195,11 @@ ${sentenceComplexity ? `文の複雑さ: ${sentenceComplexity}` : ''}
 
 要件：
 1. 文は自然で文法的に正しいものにする
-2. ${targetExam === 'TOEFL' ? '学術的な文脈を使用する' : targetExam === 'TOEIC' ? 'ビジネスシーンの文脈を使用する' : '文脈から単語の意味が推測できるようにする'}
+2. ${targetExam === 'TOEFL' || targetExam === '英検' ? '学術的な文脈を使用する' : targetExam === 'TOEIC' ? 'ビジネスシーンの文脈を使用する' : '文脈から単語の意味が推測できるようにする'}
 3. 選択肢は紛らわしいが、正解は明確に1つだけ
 4. ${sentenceComplexity || '難易度に応じて文の複雑さを調整する'}
-5. JSONフォーマットで返す`;
+5. ${targetExam === '英検' ? 'TOEFL換算スコアに基づいた学術的な語彙と文構造を使用する' : 'JSONフォーマットで返す'}
+6. JSONフォーマットで返す`;
 
       try {
         const result = await generateContent(prompt);
