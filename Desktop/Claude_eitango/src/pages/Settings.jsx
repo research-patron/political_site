@@ -42,6 +42,7 @@ const Settings = () => {
   const navigate = useNavigate();
   const { currentUser, userProfile, updateUserProfile, logout } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
+  const [isEditingLearning, setIsEditingLearning] = useState(false);
   const [formData, setFormData] = useState({
     displayName: '',
     targetExam: '',
@@ -113,6 +114,31 @@ const Settings = () => {
     } catch (error) {
       console.error('Error saving settings:', error);
       setSnackbar({ open: true, message: '設定の保存に失敗しました', severity: 'error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSaveLearning = async () => {
+    setLoading(true);
+    try {
+      // 学習設定のみを更新
+      await updateUserProfile({
+        settings: {
+          ...userProfile?.settings,
+          targetExam: formData.targetExam,
+          targetLevel: formData.targetLevel,
+          dailyGoal: formData.dailyGoal,
+          reminderTime: formData.reminderTime,
+          isDarkMode: formData.isDarkMode,
+        },
+      });
+
+      setSnackbar({ open: true, message: '学習設定を保存しました', severity: 'success' });
+      setIsEditingLearning(false);
+    } catch (error) {
+      console.error('Error saving learning settings:', error);
+      setSnackbar({ open: true, message: '学習設定の保存に失敗しました', severity: 'error' });
     } finally {
       setLoading(false);
     }
@@ -192,9 +218,23 @@ const Settings = () => {
       {/* 学習設定 */}
       <Card sx={{ mb: 3 }}>
         <CardContent>
-          <Typography variant="h6" gutterBottom>
-            学習設定
-          </Typography>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+            <Typography variant="h6">学習設定</Typography>
+            {!isEditingLearning ? (
+              <IconButton onClick={() => setIsEditingLearning(true)}>
+                <EditIcon />
+              </IconButton>
+            ) : (
+              <Button
+                variant="contained"
+                startIcon={<SaveIcon />}
+                onClick={handleSaveLearning}
+                disabled={loading}
+              >
+                保存
+              </Button>
+            )}
+          </Box>
 
           <FormControl fullWidth sx={{ mb: 2 }}>
             <InputLabel>目標資格</InputLabel>
@@ -202,7 +242,7 @@ const Settings = () => {
               value={formData.targetExam}
               label="目標資格"
               onChange={(e) => setFormData({ ...formData, targetExam: e.target.value, targetLevel: '' })}
-              disabled={!isEditing}
+              disabled={!isEditingLearning}
             >
               <MenuItem value="">選択してください</MenuItem>
               {examTypes.map((exam) => (
@@ -220,7 +260,7 @@ const Settings = () => {
                 value={formData.targetLevel}
                 label="目標レベル"
                 onChange={(e) => setFormData({ ...formData, targetLevel: e.target.value })}
-                disabled={!isEditing}
+                disabled={!isEditingLearning}
               >
                 <MenuItem value="">選択してください</MenuItem>
                 {examLevels[formData.targetExam].map((level) => (
@@ -239,7 +279,7 @@ const Settings = () => {
             label="1日の目標学習単語数"
             value={formData.dailyGoal}
             onChange={(e) => setFormData({ ...formData, dailyGoal: parseInt(e.target.value) || 10 })}
-            disabled={!isEditing}
+            disabled={!isEditingLearning}
             inputProps={{ min: 1, max: 100 }}
             sx={{ mb: 2 }}
           />
@@ -250,7 +290,7 @@ const Settings = () => {
             label="リマインダー時刻"
             value={formData.reminderTime}
             onChange={(e) => setFormData({ ...formData, reminderTime: e.target.value })}
-            disabled={!isEditing}
+            disabled={!isEditingLearning}
             InputLabelProps={{ shrink: true }}
           />
         </CardContent>
@@ -273,7 +313,7 @@ const Settings = () => {
                 <Switch
                   checked={formData.isDarkMode}
                   onChange={(e) => setFormData({ ...formData, isDarkMode: e.target.checked })}
-                  disabled={!isEditing}
+                  disabled={!isEditing && !isEditingLearning}
                 />
               </ListItemSecondaryAction>
             </ListItem>
