@@ -1,8 +1,9 @@
 // Firebase configuration
-// This is a placeholder implementation. In production, you would:
-// 1. Install Firebase SDK: npm install firebase
-// 2. Set up your Firebase project configuration
-// 3. Implement actual Firebase services
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getFirestore, connectFirestoreEmulator } from 'firebase/firestore';
+import { getAuth, connectAuthEmulator } from 'firebase/auth';
+import { getStorage, connectStorageEmulator } from 'firebase/storage';
+import { getFunctions, connectFunctionsEmulator } from 'firebase/functions';
 
 export interface FirebaseConfig {
   apiKey: string;
@@ -11,9 +12,10 @@ export interface FirebaseConfig {
   storageBucket: string;
   messagingSenderId: string;
   appId: string;
+  measurementId?: string;
 }
 
-// Placeholder configuration - replace with actual Firebase config
+// Firebase configuration from environment variables
 export const firebaseConfig: FirebaseConfig = {
   apiKey: process.env.REACT_APP_FIREBASE_API_KEY || '',
   authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN || '',
@@ -21,25 +23,30 @@ export const firebaseConfig: FirebaseConfig = {
   storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET || '',
   messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID || '',
   appId: process.env.REACT_APP_FIREBASE_APP_ID || '',
+  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID || '',
 };
 
-// Placeholder functions for Firebase services
-export const initializeFirebase = () => {
-  console.log('Firebase initialization placeholder');
-  // In production: initializeApp(firebaseConfig);
-};
+// Initialize Firebase app
+let app;
+if (getApps().length === 0) {
+  app = initializeApp(firebaseConfig);
+} else {
+  app = getApp();
+}
 
-export const getFirestore = () => {
-  console.log('Firestore placeholder');
-  // In production: return getFirestore(app);
-};
+// Initialize Firebase services
+export const db = getFirestore(app);
+export const auth = getAuth(app);
+export const storage = getStorage(app);
+export const functions = getFunctions(app, 'asia-northeast1');
 
-export const getAuth = () => {
-  console.log('Auth placeholder');
-  // In production: return getAuth(app);
-};
+// Connect to emulators in development
+if (process.env.NODE_ENV === 'development') {
+  // Uncomment to use Firebase emulators
+  // connectFirestoreEmulator(db, 'localhost', 8080);
+  // connectAuthEmulator(auth, 'http://localhost:9099');
+  // connectStorageEmulator(storage, 'localhost', 9199);
+  // connectFunctionsEmulator(functions, 'localhost', 5001);
+}
 
-export const getStorage = () => {
-  console.log('Storage placeholder');
-  // In production: return getStorage(app);
-};
+export { app };
