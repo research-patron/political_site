@@ -3,3 +3,38 @@
 .env.local
 .env.local.example
 .env.server
+node_modules/
+.next/
+
+# システムファイル
+.DS_Store
+Thumbs.db
+
+# IDE/エディタ
+.vscode/
+.idea/
+*.swp
+
+# ビルド出力
+dist/
+build/
+out/
+functions/lib/
+
+# 依存関係ログ
+npm-debug.log
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Firebase
+firebase-debug.log
+.firebase/
+ui-debug.log
+
+# TypeScript
+tsconfig.tsbuildinfo
+
+# その他
+.cache/
+.vercel/
