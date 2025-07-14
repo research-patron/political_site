@@ -1,1 +1,0 @@
-"use strict";exports.id=50,exports.ids=[50],exports.modules={91050:(e,s,o)=>{o.r(s),o.d(s,{ComparisonPageClient:()=>t});let t=(0,o(68570).createProxy)(String.raw`/Users/niigatadaigakukenkyuuyou/Desktop/political_site/src/components/features/comparison/ComparisonPageClient.tsx#ComparisonPageClient`)}};

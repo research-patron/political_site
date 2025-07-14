@@ -1,1 +1,0 @@
-"use strict";exports.id=859,exports.ids=[859],exports.modules={95859:(e,t,i)=>{i.r(t),i.d(t,{CandidateDetailClient:()=>a});let a=(0,i(68570).createProxy)(String.raw`/Users/niigatadaigakukenkyuuyou/Desktop/political_site/src/components/features/candidates/CandidateDetailClient.tsx#CandidateDetailClient`)}};

@@ -1,1 +1,0 @@
-"use strict";exports.id=763,exports.ids=[763],exports.modules={79763:(t,e,s)=>{s.r(e),s.d(e,{CandidateList:()=>i});let i=(0,s(68570).createProxy)(String.raw`/Users/niigatadaigakukenkyuuyou/Desktop/political_site/src/components/features/candidates/CandidateList.tsx#CandidateList`)}};
