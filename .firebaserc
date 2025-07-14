@@ -1,0 +1,15 @@
+{
+  "projects": {
+    "default": "political-site-583aa"
+  },
+  "targets": {
+    "political-site-583aa": {
+      "hosting": {
+        "production": [
+          "political-site-583aa"
+        ]
+      }
+    }
+  },
+  "etags": {}
+}
