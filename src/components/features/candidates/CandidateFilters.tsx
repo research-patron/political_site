@@ -126,14 +126,14 @@ export function CandidateFilters({ filters, onFiltersChange }: CandidateFiltersP
           <div>
             <label className="text-sm font-medium mb-2 block">都道府県</label>
             <Select
-              value={filters.prefecture || ''}
-              onValueChange={(value) => updateFilter('prefecture', value || undefined)}
+              value={filters.prefecture || 'all'}
+              onValueChange={(value) => updateFilter('prefecture', value === 'all' ? undefined : value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="選択" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">すべて</SelectItem>
+                <SelectItem value="all">すべて</SelectItem>
                 {prefectures.map((pref) => (
                   <SelectItem key={pref} value={pref}>
                     {pref}
@@ -146,14 +146,14 @@ export function CandidateFilters({ filters, onFiltersChange }: CandidateFiltersP
           <div>
             <label className="text-sm font-medium mb-2 block">選挙種別</label>
             <Select
-              value={filters.electionType || ''}
-              onValueChange={(value) => updateFilter('electionType', value || undefined)}
+              value={filters.electionType || 'all'}
+              onValueChange={(value) => updateFilter('electionType', value === 'all' ? undefined : value)}
             >
               <SelectTrigger>
                 <SelectValue placeholder="選択" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">すべて</SelectItem>
+                <SelectItem value="all">すべて</SelectItem>
                 {electionTypes.map((type) => (
                   <SelectItem key={type.value} value={type.value}>
                     {type.label}

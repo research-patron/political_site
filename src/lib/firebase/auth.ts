@@ -1,9 +1,14 @@
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithPopup,
+  signInWithPhoneNumber,
   signOut,
   onAuthStateChanged,
   updateProfile,
+  GoogleAuthProvider,
+  RecaptchaVerifier,
+  ConfirmationResult,
   User
 } from 'firebase/auth'
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore'
@@ -34,6 +39,56 @@ export const createUser = async (email: string, password: string, name: string):
 export const signIn = async (email: string, password: string): Promise<User> => {
   const userCredential = await signInWithEmailAndPassword(auth, email, password)
   return userCredential.user
+}
+
+// Google認証でサインイン
+export const signInWithGoogle = async (): Promise<User> => {
+  const provider = new GoogleAuthProvider()
+  provider.addScope('email')
+  provider.addScope('profile')
+  
+  const userCredential = await signInWithPopup(auth, provider)
+  const user = userCredential.user
+
+  // ユーザー情報をFirestoreに保存（初回のみ）
+  await ensureUserDocument(user)
+  
+  return user
+}
+
+// 電話番号認証でサインイン（reCAPTCHAセットアップ）
+export const setupRecaptcha = (elementId: string): RecaptchaVerifier => {
+  return new RecaptchaVerifier(auth, elementId, {
+    size: 'normal',
+    callback: () => {
+      console.log('reCAPTCHA solved')
+    },
+    'expired-callback': () => {
+      console.log('reCAPTCHA expired')
+    }
+  })
+}
+
+// 電話番号にSMS送信
+export const sendPhoneVerification = async (
+  phoneNumber: string, 
+  recaptchaVerifier: RecaptchaVerifier
+): Promise<ConfirmationResult> => {
+  return await signInWithPhoneNumber(auth, phoneNumber, recaptchaVerifier)
+}
+
+// SMS認証コード確認
+export const verifyPhoneCode = async (
+  confirmationResult: ConfirmationResult,
+  code: string
+): Promise<User> => {
+  const userCredential = await confirmationResult.confirm(code)
+  const user = userCredential.user
+
+  // ユーザー情報をFirestoreに保存（初回のみ）
+  await ensureUserDocument(user)
+  
+  return user
 }
 
 export const logOut = async (): Promise<void> => {
@@ -79,6 +134,31 @@ export const requireAdmin = async (user: User | null): Promise<void> => {
   const adminStatus = await isAdmin(user)
   if (!adminStatus) {
     throw new Error('Admin privileges required')
+  }
+}
+
+// ユーザーのFirestoreドキュメントを確認・作成
+export const ensureUserDocument = async (user: User): Promise<void> => {
+  try {
+    const userData = await getUserData(user.uid)
+    
+    if (!userData) {
+      // ユーザードキュメントが存在しない場合は作成
+      const userDoc: Omit<AppUser, 'id'> = {
+        email: user.email || '',
+        name: user.displayName || 'ユーザー',
+        role: user.email === 's.kosei0626@gmail.com' ? 'admin' : 'user',
+        createdAt: new Date() as any,
+        updatedAt: new Date() as any,
+      }
+      await setDoc(doc(db, 'users', user.uid), userDoc)
+      console.log('User document created for:', user.email)
+    }
+
+    // マスターアカウントの権限確認
+    await ensureMasterAccountAdmin(user)
+  } catch (error) {
+    console.error('Error ensuring user document:', error)
   }
 }
 

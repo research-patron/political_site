@@ -5,7 +5,7 @@ import { Navigation } from './Navigation'
 import { MobileNav } from './MobileNav'
 import { UserMenu } from './UserMenu'
 import { ThemeToggle } from './ThemeToggle'
-import { useAuth } from '@/lib/hooks/useAuth'
+import { useAuth } from '@/lib/contexts/AuthContext'
 
 interface AppLayoutProps {
   children: React.ReactNode
@@ -13,7 +13,7 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const { user, userData, loading } = useAuth()
+  const { user, loading } = useAuth()
 
   return (
     <div className="min-h-screen bg-background">
@@ -24,7 +24,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             <Navigation />
             <div className="flex items-center space-x-4">
               <ThemeToggle />
-              <UserMenu user={userData} loading={loading} />
+              <UserMenu user={user} loading={loading} />
             </div>
           </div>
         </div>
@@ -35,7 +35,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         className="lg:hidden" 
         open={mobileMenuOpen}
         onOpenChange={setMobileMenuOpen}
-        user={userData}
+        user={user}
         loading={loading}
       />
       

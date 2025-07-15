@@ -31,11 +31,15 @@ const nextConfig = {
   },
   
   webpack: (config, { isServer }) => {
-    // Exclude docs directory from build
+    // Exclude docs and functions directories from build
     config.watchOptions = {
       ...config.watchOptions,
-      ignored: ['/docs/**/*', '**/node_modules']
+      ignored: ['/docs/**/*', '/functions/**/*', '**/node_modules']
     }
+    
+    // Exclude functions directory from compilation
+    config.externals = config.externals || []
+    config.externals.push(/^functions\/.*$/)
     
     // Resolve client-side modules
     if (!isServer) {

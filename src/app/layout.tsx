@@ -4,6 +4,7 @@ import '@/styles/globals.css'
 import { ThemeProvider } from '@/components/theme-provider'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { QueryProvider } from '@/lib/providers/QueryProvider'
+import { AuthProvider } from '@/lib/contexts/AuthContext'
 
 const inter = Inter({ subsets: ['latin'] })
 
@@ -30,7 +31,9 @@ export default function RootLayout({
           disableTransitionOnChange
         >
           <QueryProvider>
-            <AppLayout>{children}</AppLayout>
+            <AuthProvider>
+              <AppLayout>{children}</AppLayout>
+            </AuthProvider>
           </QueryProvider>
         </ThemeProvider>
       </body>

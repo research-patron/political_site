@@ -1,10 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.healthCheck = exports.getAvailableAnalyzers = exports.analyzePolicy = exports.helloWorld = void 0;
+exports.healthCheck = exports.getAvailableAnalyzers = exports.analyzePolicy = exports.analyzePolicies = exports.scrapeUrl = exports.helloWorld = void 0;
 const https_1 = require("firebase-functions/v2/https");
 const v2_1 = require("firebase-functions/v2");
 const app_1 = require("firebase-admin/app");
 const aiAnalyzer_1 = require("./services/aiAnalyzer");
+const urlScraper_1 = require("./scrapers/urlScraper");
 // Global settings
 (0, v2_1.setGlobalOptions)({
     region: 'asia-northeast1', // Tokyo region
@@ -25,8 +26,112 @@ exports.helloWorld = (0, https_1.onRequest)(async (req, res) => {
     });
 });
 /**
- * AI分析用Cloud Function（基盤）
- * TODO: 実際のAI分析ロジック実装
+ * URL スクレイピング用Cloud Function (2025最新実装)
+ */
+exports.scrapeUrl = (0, https_1.onRequest)({
+    cors: true,
+    timeoutSeconds: 120,
+    memory: '1GiB'
+}, async (req, res) => {
+    try {
+        if (req.method !== 'POST') {
+            res.status(405).json({ error: 'Method not allowed' });
+            return;
+        }
+        const { url } = req.body;
+        if (!url) {
+            res.status(400).json({ error: 'URL is required' });
+            return;
+        }
+        // URLの妥当性チェック
+        if (!urlScraper_1.URLScraper.isValidURL(url) || !urlScraper_1.URLScraper.isAllowedDomain(url)) {
+            res.status(400).json({ error: 'Invalid or blocked URL' });
+            return;
+        }
+        console.log(`Scraping URL: ${url}`);
+        // スクレイピング実行
+        const scrapedContent = await urlScraper_1.URLScraper.scrapeURL(url);
+        res.status(200).json({
+            success: true,
+            content: scrapedContent.content,
+            title: scrapedContent.title,
+            extractedPolicies: scrapedContent.extractedPolicies,
+            candidateInfo: scrapedContent.candidateInfo,
+            metadata: scrapedContent.metadata,
+            timestamp: new Date().toISOString()
+        });
+    }
+    catch (error) {
+        console.error('URL scraping error:', error);
+        res.status(500).json({
+            error: 'Scraping failed',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+/**
+ * AI政策分析用Cloud Function (2025最新実装)
+ */
+exports.analyzePolicies = (0, https_1.onRequest)({
+    cors: true,
+    timeoutSeconds: 300,
+    memory: '1GiB'
+}, async (req, res) => {
+    var _a;
+    try {
+        if (req.method !== 'POST') {
+            res.status(405).json({ error: 'Method not allowed' });
+            return;
+        }
+        const { content, analysisType = 'policy-evaluation', analyzer = 'gemini' } = req.body;
+        // 入力バリデーション
+        if (!content) {
+            res.status(400).json({ error: 'Content is required' });
+            return;
+        }
+        if (!['gemini', 'claude', 'perplexity'].includes(analyzer)) {
+            res.status(400).json({ error: 'Invalid analyzer type' });
+            return;
+        }
+        console.log(`Starting policy analysis with ${analyzer}`);
+        // AI分析サービス選択
+        const aiService = aiAnalyzer_1.AIAnalyzerFactory.createAnalyzer(analyzer);
+        // 分析実行
+        const analysisResult = await aiService.analyze(content, analysisType);
+        if (analysisResult.status === 'error') {
+            res.status(500).json({
+                error: 'Analysis failed',
+                details: analysisResult.error,
+                analyzer
+            });
+            return;
+        }
+        // 結果を整形
+        const policies = analysisResult.result ? [analysisResult.result] : [];
+        // 候補者名を推定（コンテンツから）
+        const candidateName = extractCandidateName(content);
+        res.status(200).json({
+            success: true,
+            analyzer,
+            model: analysisResult.model,
+            candidateName,
+            policies,
+            summary: ((_a = analysisResult.result) === null || _a === void 0 ? void 0 : _a.summary) || '政策分析が完了しました',
+            timestamp: new Date().toISOString(),
+            usage: analysisResult.usage,
+            searchBased: analysisResult.searchBased || false
+        });
+    }
+    catch (error) {
+        console.error('Policy analysis error:', error);
+        res.status(500).json({
+            error: 'Analysis failed',
+            message: error instanceof Error ? error.message : 'Unknown error'
+        });
+    }
+});
+/**
+ * 旧API（下位互換性維持）
  */
 exports.analyzePolicy = (0, https_1.onCall)({
     cors: true,
@@ -41,7 +146,7 @@ exports.analyzePolicy = (0, https_1.onCall)({
         console.log(`Starting ${analysisType} analysis with ${aiProvider}`);
         // AI分析サービス選択
         const analyzer = aiAnalyzer_1.AIAnalyzerFactory.createAnalyzer(aiProvider);
-        // 分析実行（現在はplaceholder）
+        // 分析実行
         const result = await analyzer.analyze(policyText, analysisType);
         return {
             success: true,
@@ -107,4 +212,21 @@ exports.healthCheck = (0, https_1.onRequest)(async (req, res) => {
         });
     }
 });
+/**
+ * コンテンツから候補者名を抽出するヘルパー関数
+ */
+function extractCandidateName(content) {
+    const namePatterns = [
+        /([^\s]+\s+[^\s]+).*候補/,
+        /([^\s]+\s+[^\s]+).*議員/,
+        /([^\s]+\s+[^\s]+).*代表/
+    ];
+    for (const pattern of namePatterns) {
+        const match = content.match(pattern);
+        if (match) {
+            return match[1];
+        }
+    }
+    return undefined;
+}
 //# sourceMappingURL=index.js.map

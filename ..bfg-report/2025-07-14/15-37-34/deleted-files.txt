@@ -1,0 +1,1 @@
+801dc2f0f4bf1e49aafbca7b6d659e8c7a367ae1 114963832 next-swc.darwin-arm64.node
